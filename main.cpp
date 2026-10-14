@@ -3,8 +3,15 @@
 #include <thread>
 #include "src/Application.h"
 #include "src/Manager.h"
+#include "src/WindowManager.h"
 
 int main() {
+
+    auto wm = WindowManager();
+    wm.update_theme();
+    std::cout << wm.get_theme();
+    return 0;
+
     const auto steam_app = Application(LR"(C:\Program Files (x86)\Steam\steam.exe)");
     const auto firefox_app = Application(LR"(C:\Program Files\Mozilla Firefox\firefox.exe)");
     const auto manager = Manager({steam_app, firefox_app});

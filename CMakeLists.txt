@@ -12,6 +12,8 @@ add_executable(XLibrary
         src/Manager.cpp
         src/Manager.h
         src/Heartbeat.cpp
-        src/Heartbeat.h)
+        src/Heartbeat.h
+        src/WindowManager.cpp
+        src/WindowManager.h)
 
 target_link_libraries(XLibrary PRIVATE ole32 version shell32 Threads::Threads)
