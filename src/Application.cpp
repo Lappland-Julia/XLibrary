@@ -5,8 +5,10 @@
 #include <cstring>
 #include <cwchar>
 #include <iterator>
+#include <memory>
 #include <objbase.h>
 #include <ostream>
+#include <shellapi.h>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
@@ -121,24 +123,39 @@ std::string Application::read_application_name(const std::filesystem::path &exec
     return fallback_name;
 }
 
-void Application::launch() const {
+std::uint32_t Application::launch() const {
     const std::filesystem::path executable_path = this->get_file_path();
     const auto working_directory = executable_path.parent_path();
 
-    const auto result = ShellExecuteW(
-        nullptr,
-        L"open",
-        executable_path.c_str(),
-        nullptr,                   // Аргументы запуска.
-        working_directory.c_str(),
-        SW_SHOWNORMAL
-    );
+    SHELLEXECUTEINFOW launch_info{};
+    launch_info.cbSize = sizeof(launch_info);
+    launch_info.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI;
+    launch_info.lpVerb = L"open";
+    launch_info.lpFile = executable_path.c_str();
+    launch_info.lpDirectory = working_directory.c_str();
+    launch_info.nShow = SW_SHOWNORMAL;
 
-    if (const auto error_code = reinterpret_cast<INT_PTR>(result); error_code <= 32) {
+    if (!ShellExecuteExW(&launch_info)) {
+        const auto error_code = GetLastError();
         throw std::runtime_error(
             "Application launch failed: " + std::to_string(error_code)
         );
     }
+
+    const std::unique_ptr<void, decltype(&CloseHandle)> process_handle(
+        launch_info.hProcess, &CloseHandle);
+    if (!process_handle) {
+        // Shell может передать запрос уже работающему приложению без создания процесса.
+        throw std::runtime_error("Application opened, but Windows did not return a process handle");
+    }
+
+    const auto process_id = GetProcessId(process_handle.get());
+    if (process_id == 0) {
+        const auto error_code = GetLastError();
+        throw std::runtime_error("Cannot obtain application PID: " + std::to_string(error_code));
+    }
+
+    return process_id;
 }
 
 std::ostream& operator<<(std::ostream& stream, const Application& application)

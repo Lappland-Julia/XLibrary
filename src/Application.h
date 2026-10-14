@@ -1,6 +1,7 @@
 #ifndef XLIBRARY_APPLICATION_H
 #define XLIBRARY_APPLICATION_H
 
+#include <cstdint>
 #include <filesystem>
 #include <iosfwd>
 #include <string>
@@ -22,10 +23,10 @@ public:
     std::filesystem::path get_file_path() const { return this->file_path; }
 
     void set_executable(std::filesystem::path const &file_path);
-    void launch() const;
+    std::uint32_t launch() const;
 
     Application();
-    Application(const std::filesystem::path &executable_path);
+    explicit Application(const std::filesystem::path &executable_path);
 };
 
 std::ostream& operator<<(std::ostream& stream, const Application& application);

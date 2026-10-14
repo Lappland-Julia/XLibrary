@@ -3,6 +3,7 @@
 
 #include <vector>
 #include "Application.h"
+#include "Heartbeat.h"
 
 
 class Manager {
@@ -18,7 +19,12 @@ public:
     void add_application(const Application &application) { this->applications.push_back(application); }
     void add_applications(const std::vector<Application> &applications);
 
-    void launch(const std::string title) const;
+    std::uint32_t launch(const std::string title) const;
+    Heartbeat heartbeat(const std::string title, std::uint32_t process_id) const;
+
+    std::vector<Application> get_apps() const;
+    std::vector<std::string> get_names() const;
+    std::vector<std::filesystem::path> get_paths() const;
 };
 
 
