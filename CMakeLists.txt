@@ -25,7 +25,7 @@ add_executable(XLibrary
         src/Heartbeat.h
         src/Database.cpp
         src/Database.h
-        src/Backend.h)
+        src/Backend.h
         src/WindowManager.cpp
         src/WindowManager.h)
 
