@@ -26,5 +26,7 @@ add_executable(XLibrary
         src/Database.cpp
         src/Database.h
         src/Backend.h)
+        src/WindowManager.cpp
+        src/WindowManager.h)
 
 target_link_libraries(XLibrary PRIVATE ole32 version shell32 Threads::Threads sqlite3)
