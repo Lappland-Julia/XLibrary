@@ -79,13 +79,27 @@ std::filesystem::path Database::setup() const {
     return this->get_file_path();
 }
 
-void Database::add_application(const Application application) const {
+void Database::add_application(const Application &application) const {
+    if (this->already_exists(application.get_file_path()) || this->already_exists(application.get_file_title())) {
+        if (this->drop_on_add_error) {
+            throw std::invalid_argument(application.get_file_title() + " app is already exists in database");
+        }
+        return;
+    }
+
     const std::string file_title = application.get_file_title();
     const std::filesystem::path file_path = application.get_file_path();
     this->add_application(file_title, file_path);
 }
 
 void Database::add_application(const std::string &file_title, const std::filesystem::path &file_path) const {
+    if (this->already_exists(file_title) || this->already_exists(file_path)) {
+        if (this->drop_on_add_error) {
+            throw std::invalid_argument(file_title + " app is already exists in database");
+        }
+        return;
+    }
+
     sqlite3_stmt *raw_statement = nullptr;
     const int result = sqlite3_prepare_v2(
         this->connection.get(), "INSERT INTO applications (name, path) VALUES (?, ?);",
@@ -105,6 +119,55 @@ void Database::add_application(const std::string &file_title, const std::filesys
         sqlite3_step(statement.get()) != SQLITE_DONE) {
         throw std::runtime_error(std::string("Cannot add application: ") + sqlite3_errmsg(this->connection.get()));
     }
+}
+
+bool Database::already_exists(const std::string &file_title) const {
+    sqlite3_stmt *raw_statement = nullptr;
+    const int result = sqlite3_prepare_v2(
+        this->connection.get(), "SELECT 1 FROM applications WHERE name = ? LIMIT 1;",
+        -1, &raw_statement, nullptr
+    );
+    const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> statement(
+        raw_statement, &sqlite3_finalize
+    );
+    if (result != SQLITE_OK ||
+        sqlite3_bind_text64(statement.get(), 1, file_title.data(), file_title.size(), SQLITE_TRANSIENT, SQLITE_UTF8) != SQLITE_OK) {
+        throw std::runtime_error(std::string("Cannot check application: ") + sqlite3_errmsg(this->connection.get()));
+    }
+
+    const int step_result = sqlite3_step(statement.get());
+    if (step_result != SQLITE_ROW && step_result != SQLITE_DONE) {
+        throw std::runtime_error(std::string("Cannot check application: ") + sqlite3_errmsg(this->connection.get()));
+    }
+
+    return step_result == SQLITE_ROW;
+}
+
+bool Database::already_exists(const std::filesystem::path &file_path) const {
+    sqlite3_stmt *raw_statement = nullptr;
+    const int result = sqlite3_prepare_v2(
+        this->connection.get(), "SELECT 1 FROM applications WHERE path = ? LIMIT 1;",
+        -1, &raw_statement, nullptr
+    );
+    const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> statement(
+        raw_statement, &sqlite3_finalize
+    );
+    if (result != SQLITE_OK) {
+        throw std::runtime_error(std::string("Cannot check application: ") + sqlite3_errmsg(this->connection.get()));
+    }
+
+    const auto utf8_path = file_path.u8string();
+    const std::string path_string(utf8_path.begin(), utf8_path.end());
+    if (sqlite3_bind_text64(statement.get(), 1, path_string.data(), path_string.size(), SQLITE_TRANSIENT, SQLITE_UTF8) != SQLITE_OK) {
+        throw std::runtime_error(std::string("Cannot check application: ") + sqlite3_errmsg(this->connection.get()));
+    }
+
+    const int step_result = sqlite3_step(statement.get());
+    if (step_result != SQLITE_ROW && step_result != SQLITE_DONE) {
+        throw std::runtime_error(std::string("Cannot check application: ") + sqlite3_errmsg(this->connection.get()));
+    }
+
+    return step_result == SQLITE_ROW;
 }
 
 std::vector<Application> Database::get_applications() const {

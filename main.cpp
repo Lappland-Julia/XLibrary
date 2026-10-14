@@ -5,12 +5,15 @@
 #include "src/Backend.h"
 
 int main() try {
-    const Database database{};
+    const Database database{false};
     auto path = database.setup();
     const auto steam_app = Application(LR"(C:\Program Files (x86)\Steam\steam.exe)");
     const auto firefox_app = Application(LR"(C:\Program Files\Mozilla Firefox\firefox.exe)");
+
+    database.add_application(firefox_app);
+    database.add_application(steam_app);
+
     const auto manager = Manager(database.get_applications());
-    //database.add_application(firefox_app);
     std::cout << "Available apps: ";
     for (auto name: manager.get_names()) {
         std::cout << name << "; ";

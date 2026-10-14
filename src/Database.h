@@ -10,6 +10,7 @@
 
 class Database {
 private:
+    bool drop_on_add_error = true;
     std::filesystem::path file_path;
     std::unique_ptr<sqlite3, decltype(&sqlite3_close_v2)> connection{nullptr, &sqlite3_close_v2};
 
@@ -19,14 +20,18 @@ private:
 
 public:
     Database();
-    Database(const Database &) = delete;
+    explicit Database(const bool drop_on_add_error): Database() {this->drop_on_add_error=drop_on_add_error;}
+    explicit Database(const Database &) = delete;
     Database &operator=(const Database &) = delete;
 
     std::filesystem::path setup() const;
     std::filesystem::path get_file_path() const { return this->file_path; }
 
-    void add_application(const Application application) const;
+    void add_application(const Application &application) const;
     void add_application(const std::string &file_title, const std::filesystem::path &file_path) const;
+
+    bool already_exists(const std::string &file_title) const;
+    bool already_exists(const std::filesystem::path &file_path) const;
 
     sqlite3 *get_connection() const noexcept { return this->connection.get(); }
 
