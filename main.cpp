@@ -1,21 +1,19 @@
 #include <chrono>
+#include <exception>
 #include <iostream>
 #include <thread>
-#include "src/Application.h"
-#include "src/Manager.h"
-#include "src/WindowManager.h"
+#include "src/Backend.h"
 
-int main() {
-
-    auto wm = WindowManager();
-    wm.update_theme();
-    std::cout << wm.get_theme();
-    return 0;
-
+int main() try {
+    const Database database{false};
+    auto path = database.setup();
     const auto steam_app = Application(LR"(C:\Program Files (x86)\Steam\steam.exe)");
     const auto firefox_app = Application(LR"(C:\Program Files\Mozilla Firefox\firefox.exe)");
-    const auto manager = Manager({steam_app, firefox_app});
 
+    database.add_application(firefox_app);
+    database.add_application(steam_app);
+
+    const auto manager = Manager(database.get_applications());
     std::cout << "Available apps: ";
     for (auto name: manager.get_names()) {
         std::cout << name << "; ";
@@ -54,4 +52,8 @@ int main() {
     }
 
     return 0;
+}
+catch (const std::exception &error) {
+    std::cerr << error.what() << "\n";
+    return 1;
 }
