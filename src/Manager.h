@@ -10,6 +10,8 @@ class Manager {
 private:
     std::vector<Application> applications {};
 
+    static std::string to_lower(std::string data);
+
 public:
     Manager(){};
 

@@ -177,6 +177,10 @@ void Application::set_executable(std::filesystem::path const &file_path) {
     const auto name_utf8 = executable_path.stem().u8string();
     std::string application_name(name_utf8.begin(), name_utf8.end());
 
+    if (extension == L"") {
+        throw std::invalid_argument("Invalid app path");
+    }
+
     if (extension == L".exe" && std::filesystem::is_regular_file(executable_path)) {
         application_name = this->read_application_name(executable_path);
     }

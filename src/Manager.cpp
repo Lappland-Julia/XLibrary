@@ -1,6 +1,15 @@
 #include "Manager.h"
 
 #include <stdexcept>
+#include <cctype>
+#include <algorithm>
+
+std::string Manager::to_lower(std::string data) {
+    std::ranges::transform(data, data.begin(), [](unsigned char c) {
+        return std::tolower(c);
+    });
+    return data;
+}
 
 void Manager::add_applications(const std::vector<Application> &applications) {
     for (auto &app: applications) {
@@ -10,7 +19,7 @@ void Manager::add_applications(const std::vector<Application> &applications) {
 
 std::uint32_t Manager::launch(const std::string title) const {
     for (auto &app: this->applications) {
-        if (app.get_file_title() == title) {
+        if (this->to_lower(app.get_file_title()) == this->to_lower(title)) {
             return app.launch();
         }
     }
@@ -19,7 +28,7 @@ std::uint32_t Manager::launch(const std::string title) const {
 
 Heartbeat Manager::heartbeat(const std::string title, std::uint32_t process_id) const {
     for (const auto &app: this->applications) {
-        if (app.get_file_title() == title) {
+        if (this->to_lower(app.get_file_title()) == this->to_lower(title)) {
             return Heartbeat(process_id, app.get_file_path());
         }
     }
