@@ -7,5 +7,6 @@
 #include "Database.h"
 #include "Manager.h"
 #include "Heartbeat.h"
+#include "WindowManager.h"
 
 #endif //XLIBRARY_BACKEND_H
