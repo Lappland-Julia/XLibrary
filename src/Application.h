@@ -6,8 +6,6 @@
 #include <iosfwd>
 #include <string>
 
-
-
 class Application {
 private:
     std::string uuid = generate_uuid();
@@ -15,7 +13,10 @@ private:
     std::filesystem::path file_path = LR"(~)";
     static std::string generate_uuid();
     static std::string read_application_name(const std::filesystem::path &executable_path);
-    void set_empty() { this->file_title=""; this->file_path=""; }
+    void set_empty() {
+        this->file_title = "";
+        this->file_path = "";
+    }
 
 public:
     std::string get_uuid() const { return this->uuid; }
@@ -34,6 +35,6 @@ public:
     }
 };
 
-std::ostream& operator<<(std::ostream& stream, const Application& application);
+std::ostream &operator<<(std::ostream &stream, const Application &application);
 
 #endif //XLIBRARY_APPLICATION_H

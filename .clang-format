@@ -1,0 +1,41 @@
+---
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: Latest
+
+IndentWidth: 4
+ContinuationIndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 120
+
+BreakBeforeBraces: Attach
+AccessModifierOffset: -4
+NamespaceIndentation: None
+AllowShortFunctionsOnASingleLine: InlineOnly
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+DerivePointerAlignment: false
+PointerAlignment: Right
+ReferenceAlignment: Right
+ReflowComments: false
+FixNamespaceComments: false
+MaxEmptyLinesToKeep: 1
+LineEnding: LF
+
+SortIncludes: CaseInsensitive
+IncludeBlocks: Regroup
+IncludeCategories:
+  # windows.h должен предшествовать остальным заголовкам Windows SDK.
+  - Regex: '^[<"]windows\.h[>"]$'
+    Priority: -30
+    SortPriority: -40
+  - Regex: '^[<"](objbase|shellapi|tlhelp32|winver)\.h[>"]$'
+    Priority: -30
+    SortPriority: -30
+  # Стандартная библиотека и прочие внешние зависимости подключаются через <>.
+  - Regex: '^<'
+    Priority: -20
+  # Приоритет 0 объединяет собственные заголовки с автоматически найденным главным.
+  - Regex: '^"'
+    Priority: 0

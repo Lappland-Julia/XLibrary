@@ -1,4 +1,6 @@
-#include "Application.h"
+#include <objbase.h>
+#include <shellapi.h>
+#include <winver.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -7,17 +9,15 @@
 #include <iomanip>
 #include <iterator>
 #include <memory>
-#include <objbase.h>
 #include <ostream>
-#include <shellapi.h>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
 #include <vector>
-#include <winver.h>
 
-std::string Application::generate_uuid()
-{
+#include "Application.h"
+
+std::string Application::generate_uuid() {
     GUID uuid{};
 
     if (const HRESULT result = CoCreateGuid(&uuid); FAILED(result)) {
@@ -64,8 +64,7 @@ std::string Application::read_application_name(const std::filesystem::path &exec
 
     void *translation_data{};
     UINT translation_size{};
-    if (!VerQueryValueW(version_info.data(), L"\\VarFileInfo\\Translation",
-                        &translation_data, &translation_size) ||
+    if (!VerQueryValueW(version_info.data(), L"\\VarFileInfo\\Translation", &translation_data, &translation_size) ||
         translation_data == nullptr || translation_size == 0 ||
         translation_size % sizeof(language_and_code_page) != 0) {
         return fallback_name;
@@ -78,23 +77,21 @@ std::string Application::read_application_name(const std::filesystem::path &exec
     for (const auto *field_name : field_names) {
         for (std::size_t index = 0; index < translation_count; ++index) {
             language_and_code_page translation{};
-            std::memcpy(&translation,
-                        static_cast<const std::byte *>(translation_data) + index * sizeof(translation),
+            std::memcpy(&translation, static_cast<const std::byte *>(translation_data) + index * sizeof(translation),
                         sizeof(translation));
 
             wchar_t query[64]{};
-            const int query_length = std::swprintf(
-                query, std::size(query), L"\\StringFileInfo\\%04x%04x\\%ls",
-                static_cast<unsigned int>(translation.language),
-                static_cast<unsigned int>(translation.code_page), field_name);
+            const int query_length = std::swprintf(query, std::size(query), L"\\StringFileInfo\\%04x%04x\\%ls",
+                                                   static_cast<unsigned int>(translation.language),
+                                                   static_cast<unsigned int>(translation.code_page), field_name);
             if (query_length <= 0) {
                 continue;
             }
 
             void *name_data{};
             UINT name_length{};
-            if (!VerQueryValueW(version_info.data(), query, &name_data, &name_length) ||
-                name_data == nullptr || name_length == 0) {
+            if (!VerQueryValueW(version_info.data(), query, &name_data, &name_length) || name_data == nullptr ||
+                name_length == 0) {
                 continue;
             }
 
@@ -106,9 +103,8 @@ std::string Application::read_application_name(const std::filesystem::path &exec
             }
 
             const int character_count = static_cast<int>(name.size());
-            const int utf8_size = WideCharToMultiByte(
-                CP_UTF8, WC_ERR_INVALID_CHARS, name.data(), character_count,
-                nullptr, 0, nullptr, nullptr);
+            const int utf8_size = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, name.data(), character_count,
+                                                      nullptr, 0, nullptr, nullptr);
             if (utf8_size == 0) {
                 continue;
             }
@@ -138,13 +134,10 @@ std::uint32_t Application::launch() const {
 
     if (!ShellExecuteExW(&launch_info)) {
         const auto error_code = GetLastError();
-        throw std::runtime_error(
-            "Application launch failed: " + std::to_string(error_code)
-        );
+        throw std::runtime_error("Application launch failed: " + std::to_string(error_code));
     }
 
-    const std::unique_ptr<void, decltype(&CloseHandle)> process_handle(
-        launch_info.hProcess, &CloseHandle);
+    const std::unique_ptr<void, decltype(&CloseHandle)> process_handle(launch_info.hProcess, &CloseHandle);
     if (!process_handle) {
         // Shell может передать запрос уже работающему приложению без создания процесса.
         throw std::runtime_error("Application opened, but Windows did not return a process handle");
@@ -159,24 +152,22 @@ std::uint32_t Application::launch() const {
     return process_id;
 }
 
-std::ostream& operator<<(std::ostream& stream, const Application& application)
-{
+std::ostream &operator<<(std::ostream &stream, const Application &application) {
     const auto path_utf8 = application.get_file_path().u8string();
     const std::string path_string(path_utf8.begin(), path_utf8.end());
 
     return stream << "Application object: {\n"
-                    << "\tUUID: " << application.get_uuid() << "\n"
-                    << "\tTitle: " << application.get_file_title() << "\n"
-                    << "\tPath: " << std::quoted(path_string) << " }";
+                  << "\tUUID: " << application.get_uuid() << "\n"
+                  << "\tTitle: " << application.get_file_title() << "\n"
+                  << "\tPath: " << std::quoted(path_string) << " }";
 }
 
 void Application::set_executable(std::filesystem::path const &file_path) {
     std::filesystem::path executable_path = std::filesystem::absolute(file_path);
 
     auto extension = executable_path.extension().wstring();
-    std::ranges::transform(extension, extension.begin(), [](wchar_t character) {
-        return static_cast<wchar_t>(std::towlower(character));
-    });
+    std::ranges::transform(extension, extension.begin(),
+                           [](wchar_t character) { return static_cast<wchar_t>(std::towlower(character)); });
 
     const auto name_utf8 = executable_path.stem().u8string();
     std::string application_name(name_utf8.begin(), name_utf8.end());
@@ -197,8 +188,7 @@ Application::Application() {
     this->set_empty();
 }
 
-Application::Application(const std::string &file_title, const std::filesystem::path &executable_path)
-    : Application() {
+Application::Application(const std::string &file_title, const std::filesystem::path &executable_path) : Application() {
     if (!executable_path.empty()) {
         this->set_executable(executable_path);
     }

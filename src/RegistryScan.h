@@ -1,11 +1,11 @@
 #ifndef XLIBRARY_REGISTRY_SCAN_H
 #define XLIBRARY_REGISTRY_SCAN_H
 
-#include "Application.h"
-
 #include <cstdint>
 #include <string>
 #include <vector>
+
+#include "Application.h"
 
 namespace xlibrary {
 
@@ -37,13 +37,13 @@ struct uninstall_entry {
 
 // Если issues != nullptr, ошибки дописываются в переданный вектор.
 // Исключения конструктора Application не подавляются.
-std::vector<::Application> scan_app_paths_current_user(std::vector<scan_issue>* issues = nullptr);
-std::vector<::Application> scan_app_paths_local_machine(std::vector<scan_issue>* issues = nullptr);
-std::vector<::Application> scan_registry_applications(std::vector<scan_issue>* issues = nullptr);
+std::vector<::Application> scan_app_paths_current_user(std::vector<scan_issue> *issues = nullptr);
+std::vector<::Application> scan_app_paths_local_machine(std::vector<scan_issue> *issues = nullptr);
+std::vector<::Application> scan_registry_applications(std::vector<scan_issue> *issues = nullptr);
 
 // Отдельные списки: никогда не объединяются со списком Application.
-std::vector<uninstall_entry> scan_uninstall_current_user(std::vector<scan_issue>* issues = nullptr);
-std::vector<uninstall_entry> scan_uninstall_local_machine(std::vector<scan_issue>* issues = nullptr);
+std::vector<uninstall_entry> scan_uninstall_current_user(std::vector<scan_issue> *issues = nullptr);
+std::vector<uninstall_entry> scan_uninstall_local_machine(std::vector<scan_issue> *issues = nullptr);
 
 } // namespace xlibrary
 

@@ -5,9 +5,9 @@
 
 #include "Application.h"
 #include "Database.h"
-#include "Manager.h"
 #include "Heartbeat.h"
-#include "WindowManager.h"
+#include "Manager.h"
 #include "RegistryScan.h"
+#include "WindowManager.h"
 
 #endif //XLIBRARY_BACKEND_H

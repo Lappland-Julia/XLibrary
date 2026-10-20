@@ -2,18 +2,18 @@
 #define XLIBRARY_MANAGER_H
 
 #include <vector>
+
 #include "Application.h"
 #include "Heartbeat.h"
 
-
 class Manager {
 private:
-    std::vector<Application> applications {};
+    std::vector<Application> applications{};
 
     static std::string to_lower(std::string data);
 
 public:
-    Manager(){};
+    Manager() {};
 
     explicit Manager(const std::vector<Application> &applications) { this->applications = applications; }
     explicit Manager(const Application &application) { this->applications = {application}; }
@@ -30,6 +30,5 @@ public:
     std::vector<std::string> get_names() const;
     std::vector<std::filesystem::path> get_paths() const;
 };
-
 
 #endif //XLIBRARY_MANAGER_H

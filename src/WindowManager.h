@@ -1,7 +1,6 @@
 #ifndef XLIBRARY_WINDOWMANAGER_H
 #define XLIBRARY_WINDOWMANAGER_H
 
-
 class WindowManager {
 private:
     bool dark_theme = true;
@@ -9,10 +8,10 @@ private:
     double brightness = -1;
 
     double get_screen_brightness() const;
+
 public:
     void update_theme();
-    int get_theme() const {return this->dark_theme;}
+    int get_theme() const { return this->dark_theme; }
 };
-
 
 #endif //XLIBRARY_WINDOWMANAGER_H

@@ -1,4 +1,5 @@
-#include "Heartbeat.h"
+#include <windows.h>
+#include <tlhelp32.h>
 
 #include <atomic>
 #include <chrono>
@@ -9,8 +10,8 @@
 #include <string>
 #include <system_error>
 #include <utility>
-#include <windows.h>
-#include <tlhelp32.h>
+
+#include "Heartbeat.h"
 
 namespace {
 using unique_handle = std::unique_ptr<void, decltype(&CloseHandle)>;
@@ -60,9 +61,8 @@ Heartbeat::Heartbeat(std::uint32_t process_id, const std::filesystem::path &exec
     }
     const auto expected_path = std::filesystem::absolute(executable_path).lexically_normal().wstring();
 
-    unique_handle process_handle(
-        OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id),
-        &CloseHandle);
+    unique_handle process_handle(OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id),
+                                 &CloseHandle);
     if (!process_handle) {
         const auto error_code = GetLastError();
         if (error_code != ERROR_INVALID_PARAMETER) {
@@ -103,8 +103,7 @@ Heartbeat::Heartbeat(std::uint32_t process_id, const std::filesystem::path &exec
             }
 
             unique_handle candidate(
-                OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, entry.th32ProcessID),
-                &CloseHandle);
+                OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, entry.th32ProcessID), &CloseHandle);
             if (!candidate) {
                 const auto error_code = GetLastError();
                 if (error_code != ERROR_INVALID_PARAMETER) {
@@ -140,23 +139,24 @@ Heartbeat::Heartbeat(std::uint32_t process_id, const std::filesystem::path &exec
         return;
     }
 
-    worker = std::jthread([state = state, check_process = std::move(check_process)](std::stop_token stop_token) mutable {
-        std::mutex wait_mutex;
-        std::condition_variable_any wake;
-        std::unique_lock wait_lock(wait_mutex);
-        while (!stop_token.stop_requested()) {
-            wake.wait_for(wait_lock, stop_token, std::chrono::milliseconds(1500), [] { return false; });
-            if (stop_token.stop_requested()) {
-                break;
+    worker =
+        std::jthread([state = state, check_process = std::move(check_process)](std::stop_token stop_token) mutable {
+            std::mutex wait_mutex;
+            std::condition_variable_any wake;
+            std::unique_lock wait_lock(wait_mutex);
+            while (!stop_token.stop_requested()) {
+                wake.wait_for(wait_lock, stop_token, std::chrono::milliseconds(1500), [] { return false; });
+                if (stop_token.stop_requested()) {
+                    break;
+                }
+                const auto [alive, error_code] = check_process();
+                state->error_code.store(error_code);
+                state->alive.store(alive);
+                if (!alive) {
+                    break;
+                }
             }
-            const auto [alive, error_code] = check_process();
-            state->error_code.store(error_code);
-            state->alive.store(alive);
-            if (!alive) {
-                break;
-            }
-        }
-    });
+        });
 }
 
 bool Heartbeat::is_alive() const noexcept {
