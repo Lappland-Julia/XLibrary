@@ -1,0 +1,41 @@
+name: Clang Format
+
+on:
+  pull_request:
+  push:
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  clang-format:
+    name: clang-format
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+
+      - name: Install clang-format 18.1.8
+        run: python -m pip install clang-format==18.1.8
+
+      - name: Check formatting
+        shell: bash
+        run: |
+          clang-format --version
+          mapfile -d '' files < <(git ls-files -z -- '*.c' '*.cc' '*.cpp' '*.cxx' '*.h' '*.hh' '*.hpp' '*.hxx' '*.inl')
+          if (( ${#files[@]} == 0 )); then
+            echo 'No source files found.' >&2
+            exit 1
+          fi
+          clang-format --style=file:.clang-format --dry-run --Werror "${files[@]}"

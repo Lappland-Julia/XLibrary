@@ -1,2 +1,10 @@
-# Auto detect text files and perform LF normalization
 * text=auto
+*.c eol=lf
+*.cc eol=lf
+*.cpp eol=lf
+*.cxx eol=lf
+*.h eol=lf
+*.hh eol=lf
+*.hpp eol=lf
+*.hxx eol=lf
+*.inl eol=lf

@@ -30,3 +30,9 @@
 *.exe
 *.out
 *.app
+
+# IDEA
+.idea/*
+
+#Local documents
+local-docs/*
