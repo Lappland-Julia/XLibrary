@@ -69,22 +69,31 @@ public:
 };
 
 class ApplicationDelegate : public QStyledItemDelegate {
+    const QIcon fallback_icon = appearance::icon("app");
+    const QIcon favorite_icon = appearance::icon("favorite");
+
+    static int scaled_size(const QStyleOptionViewItem &option, int size) {
+        return qRound(size * qMax(14, option.font.pixelSize()) / 14.0);
+    }
+
 public:
     using QStyledItemDelegate::QStyledItemDelegate;
     QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &) const override {
-        return {100, qMax(52, option.fontMetrics.height() * 3)};
+        return {100, qMax(scaled_size(option, 52), option.fontMetrics.height() + scaled_size(option, 20))};
     }
     void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override {
         painter->save();
         painter->setRenderHint(QPainter::Antialiasing);
         painter->setFont(option.font);
-        const auto rect = option.rect.adjusted(0, 2, 0, -2);
+        const auto inset = scaled_size(option, 2);
+        const auto padding = scaled_size(option, 12);
+        const auto rect = option.rect.adjusted(0, inset, 0, -inset);
         const bool selected = option.state & QStyle::State_Selected;
         const bool hover = option.state & QStyle::State_MouseOver;
         auto row_rect = rect;
         if (const auto *view = qobject_cast<const QTreeView *>(parent())) {
-            row_rect.setLeft(2);
-            row_rect.setRight(view->viewport()->width() - 3);
+            row_rect.setLeft(inset);
+            row_rect.setRight(view->viewport()->width() - inset - 1);
         }
         painter->setClipRect(option.rect, Qt::IntersectClip);
         if (selected || hover) {
@@ -92,52 +101,60 @@ public:
             painter->setPen(selected
                                 ? QPen(option.state & QStyle::State_HasFocus ? QColor("#AAB4C1") : QColor("#62666D"))
                                 : QPen(Qt::NoPen));
-            painter->drawRoundedRect(row_rect, 8, 8);
+            const auto radius = scaled_size(option, 8);
+            painter->drawRoundedRect(row_rect, radius, radius);
         }
         const auto text_color = option.palette.color(QPalette::Text);
         painter->setPen(text_color);
-        auto text_rect = rect.adjusted(12, 0, -12, 0);
+        auto text_rect = rect.adjusted(padding, 0, -padding, 0);
         if (index.column() == 0) {
-            const int size = qMin(32, rect.height() - 12);
+            const int size = qMin(scaled_size(option, 32), rect.height() - padding);
             const QRect icon_rect(text_rect.left(), rect.center().y() - size / 2, size, size);
             auto icon = qvariant_cast<QIcon>(index.data(Qt::DecorationRole));
             if (icon.isNull())
-                icon = appearance::icon("app");
+                icon = fallback_icon;
             icon.paint(painter, icon_rect);
-            text_rect.setLeft(icon_rect.right() + 12);
+            text_rect.setLeft(icon_rect.right() + padding);
             if (index.data(LibraryModel::favorite_role).toBool()) {
-                appearance::icon("favorite")
-                    .paint(painter, QRect(text_rect.right() - 16, rect.center().y() - 8, 16, 16));
-                text_rect.adjust(0, 0, -24, 0);
+                const auto star_size = scaled_size(option, 16);
+                favorite_icon.paint(painter, QRect(text_rect.right() - star_size, rect.center().y() - star_size / 2,
+                                                   star_size, star_size));
+                text_rect.adjust(0, 0, -scaled_size(option, 24), 0);
             }
+            auto name_font = option.font;
+            name_font.setPixelSize(scaled_size(option, 15));
+            painter->setFont(name_font);
             painter->drawText(
                 text_rect, Qt::AlignVCenter,
-                option.fontMetrics.elidedText(index.data().toString(), Qt::ElideRight, text_rect.width()));
+                QFontMetrics(name_font).elidedText(index.data().toString(), Qt::ElideRight, text_rect.width()));
         } else if (index.column() == 1) {
             QFont small = option.font;
-            small.setPixelSize(qMax(12, option.font.pixelSize() - 2));
+            small.setPixelSize(scaled_size(option, 12));
             painter->setFont(small);
             const QFontMetrics metrics(small);
+            const auto badge_padding = scaled_size(option, 8);
+            const auto badge_height = qMax(scaled_size(option, 24), metrics.height() + scaled_size(option, 4));
+            const auto badge_radius = scaled_size(option, 6);
             const auto tags = index.data(LibraryModel::tags_role).toStringList();
             int x = text_rect.left();
             for (qsizetype i = 0; i < tags.size(); ++i) {
                 QString text = '#' + tags[i];
-                int width = metrics.horizontalAdvance(text) + 16;
+                int width = metrics.horizontalAdvance(text) + badge_padding * 2;
                 if (x + width > text_rect.right() && i > 0) {
                     text = '+' + QString::number(tags.size() - i);
-                    width = metrics.horizontalAdvance(text) + 16;
+                    width = metrics.horizontalAdvance(text) + badge_padding * 2;
                 }
                 width = qMin(width, text_rect.right() - x);
-                if (width < 20)
+                if (width < scaled_size(option, 20))
                     break;
-                const QRect badge(x, rect.center().y() - 12, width, 24);
+                const QRect badge(x, rect.center().y() - badge_height / 2, width, badge_height);
                 painter->setBrush(option.palette.color(QPalette::Button));
                 painter->setPen(Qt::NoPen);
-                painter->drawRoundedRect(badge, 6, 6);
+                painter->drawRoundedRect(badge, badge_radius, badge_radius);
                 painter->setPen(text_color);
-                painter->drawText(badge.adjusted(8, 0, -8, 0), Qt::AlignVCenter,
-                                  metrics.elidedText(text, Qt::ElideRight, width - 16));
-                x += width + 5;
+                painter->drawText(badge.adjusted(badge_padding, 0, -badge_padding, 0), Qt::AlignVCenter,
+                                  metrics.elidedText(text, Qt::ElideRight, width - badge_padding * 2));
+                x += width + scaled_size(option, 5);
                 if (text.startsWith('+'))
                     break;
             }
@@ -146,10 +163,11 @@ public:
             const bool available = index.data(LibraryModel::available_role).toBool();
             painter->setPen(Qt::NoPen);
             painter->setBrush(QColor(running ? "#85A28A" : available ? "#80828A" : "#C2AA7D"));
-            painter->drawEllipse(QPointF(text_rect.left() + 4, rect.center().y()), 3.5, 3.5);
-            text_rect.adjust(16, 0, 0, 0);
+            const auto radius = scaled_size(option, 7) / 2.0;
+            painter->drawEllipse(QPointF(text_rect.left() + scaled_size(option, 4), rect.center().y()), radius, radius);
+            text_rect.adjust(scaled_size(option, 16), 0, 0, 0);
             auto small = option.font;
-            small.setPixelSize(qMax(12, option.font.pixelSize() - 2));
+            small.setPixelSize(scaled_size(option, 12));
             painter->setFont(small);
             painter->setPen(option.palette.color(QPalette::PlaceholderText));
             painter->drawText(
