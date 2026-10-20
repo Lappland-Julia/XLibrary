@@ -27,8 +27,8 @@ public:
     std::filesystem::path setup() const;
     std::filesystem::path get_file_path() const { return this->file_path; }
 
-    void add_application(const Application &application) const;
-    void add_application(const std::string &file_title, const std::filesystem::path &file_path) const;
+    bool add_application(const Application &application) const;
+    bool add_application(const std::string &file_title, const std::filesystem::path &file_path) const;
 
     bool already_exists(const std::string &file_title) const;
     bool already_exists(const std::filesystem::path &file_path) const;

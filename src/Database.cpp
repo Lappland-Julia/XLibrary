@@ -77,25 +77,16 @@ std::filesystem::path Database::setup() const {
     return this->get_file_path();
 }
 
-void Database::add_application(const Application &application) const {
-    if (this->already_exists(application.get_file_path()) || this->already_exists(application.get_file_title())) {
-        if (this->drop_on_add_error) {
-            throw std::invalid_argument(application.get_file_title() + " app is already exists in database");
-        }
-        return;
-    }
-
-    const std::string file_title = application.get_file_title();
-    const std::filesystem::path file_path = application.get_file_path();
-    this->add_application(file_title, file_path);
+bool Database::add_application(const Application &application) const {
+    return this->add_application(application.get_file_title(), application.get_file_path());
 }
 
-void Database::add_application(const std::string &file_title, const std::filesystem::path &file_path) const {
+bool Database::add_application(const std::string &file_title, const std::filesystem::path &file_path) const {
     if (this->already_exists(file_title) || this->already_exists(file_path)) {
         if (this->drop_on_add_error) {
             throw std::invalid_argument(file_title + " app is already exists in database");
         }
-        return;
+        return false;
     }
 
     sqlite3_stmt *raw_statement = nullptr;
@@ -115,6 +106,7 @@ void Database::add_application(const std::string &file_title, const std::filesys
         sqlite3_step(statement.get()) != SQLITE_DONE) {
         throw std::runtime_error(std::string("Cannot add application: ") + sqlite3_errmsg(this->connection.get()));
     }
+    return true;
 }
 
 bool Database::already_exists(const std::string &file_title) const {

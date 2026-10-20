@@ -34,13 +34,15 @@ int main() try {
             std::getline(std::cin, input);
             std::filesystem::path file_path = std::u8string(input.begin(), input.end());
             auto new_app = Application(file_path);
-            database.add_application(new_app);
-            manager.add_application(new_app);
+            if (database.add_application(new_app)) {
+                manager.add_application(new_app);
+            }
             std::cout << "\n";
         } else if (input == "check") {
             for (auto apps = xlibrary::scan_registry_applications(); auto app : apps) {
-                database.add_application(app);
-                manager.add_application(app);
+                if (database.add_application(app)) {
+                    manager.add_application(app);
+                }
             }
         } else {
             try {
