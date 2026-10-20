@@ -11,6 +11,21 @@ std::string Manager::to_lower(std::string data) {
     return data;
 }
 
+bool Manager::app_exists(const Application &application) const {
+    for (auto& app: this->applications) {
+        if (app == application) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void Manager::add_application(const Application &application) {
+    if (!this->app_exists(application)) {
+        this->applications.push_back(application);
+    }
+}
+
 void Manager::add_applications(const std::vector<Application> &applications) {
     for (auto &app: applications) {
         this->add_application(app);

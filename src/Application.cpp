@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstring>
 #include <cwchar>
+#include <iomanip>
 #include <iterator>
 #include <memory>
 #include <objbase.h>
@@ -160,10 +161,13 @@ std::uint32_t Application::launch() const {
 
 std::ostream& operator<<(std::ostream& stream, const Application& application)
 {
+    const auto path_utf8 = application.get_file_path().u8string();
+    const std::string path_string(path_utf8.begin(), path_utf8.end());
+
     return stream << "Application object: {\n"
                     << "\tUUID: " << application.get_uuid() << "\n"
                     << "\tTitle: " << application.get_file_title() << "\n"
-                    << "\tPath: " << application.get_file_path() << " }";
+                    << "\tPath: " << std::quoted(path_string) << " }";
 }
 
 void Application::set_executable(std::filesystem::path const &file_path) {

@@ -18,7 +18,9 @@ public:
     explicit Manager(const std::vector<Application> &applications) { this->applications = applications; }
     explicit Manager(const Application &application) { this->applications = {application}; }
 
-    void add_application(const Application &application) { this->applications.push_back(application); }
+    bool app_exists(const Application &application) const;
+
+    void add_application(const Application &application);
     void add_applications(const std::vector<Application> &applications);
 
     std::uint32_t launch(const std::string title) const;

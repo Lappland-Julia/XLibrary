@@ -28,6 +28,10 @@ public:
     Application();
     explicit Application(const std::string &file_title, const std::filesystem::path &executable_path) { this->file_title=file_title; this->set_executable(executable_path); }
     explicit Application(const std::filesystem::path &executable_path);
+
+    friend bool operator==(const Application &a, const Application &b) {
+        return (a.file_path == b.file_path && a.file_title == b.file_title);
+    }
 };
 
 std::ostream& operator<<(std::ostream& stream, const Application& application);
