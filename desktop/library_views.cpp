@@ -2,6 +2,7 @@
 #include <QButtonGroup>
 #include <QComboBox>
 #include <QDir>
+#include <QEvent>
 #include <QFileInfo>
 #include <QHeaderView>
 #include <QKeyEvent>
@@ -10,6 +11,9 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QPainter>
+#include <QResizeEvent>
+#include <QShortcut>
+#include <QSignalBlocker>
 #include <QStackedLayout>
 #include <QStyledItemDelegate>
 #include <QTreeView>
@@ -37,6 +41,33 @@ protected:
     }
 };
 
+class ApplicationList : public QTreeView {
+    void update_columns() {
+        if (!model() || model()->columnCount() < 3)
+            return;
+        const int unit = qMax(1, fontMetrics().height());
+        const int width = viewport()->width();
+        setColumnHidden(1, width < unit * 34);
+        setColumnHidden(2, width < unit * 22);
+        header()->resizeSection(1, qBound(unit * 7, width / 4, unit * 15));
+        header()->resizeSection(2, qBound(unit * 8, width / 5, unit * 11));
+    }
+
+protected:
+    void resizeEvent(QResizeEvent *event) override {
+        QTreeView::resizeEvent(event);
+        update_columns();
+    }
+    void changeEvent(QEvent *event) override {
+        QTreeView::changeEvent(event);
+        if (event->type() == QEvent::FontChange)
+            update_columns();
+    }
+
+public:
+    using QTreeView::QTreeView;
+};
+
 class ApplicationDelegate : public QStyledItemDelegate {
 public:
     using QStyledItemDelegate::QStyledItemDelegate;
@@ -46,15 +77,22 @@ public:
     void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override {
         painter->save();
         painter->setRenderHint(QPainter::Antialiasing);
+        painter->setFont(option.font);
         const auto rect = option.rect.adjusted(0, 2, 0, -2);
         const bool selected = option.state & QStyle::State_Selected;
         const bool hover = option.state & QStyle::State_MouseOver;
-        if (selected || hover) {
-            painter->fillRect(rect, selected ? option.palette.highlight() : option.palette.alternateBase());
+        auto row_rect = rect;
+        if (const auto *view = qobject_cast<const QTreeView *>(parent())) {
+            row_rect.setLeft(2);
+            row_rect.setRight(view->viewport()->width() - 3);
         }
-        if (selected && (option.state & QStyle::State_HasFocus)) {
-            painter->setPen(QPen(QColor("#AAB4C1"), 1));
-            painter->drawRect(rect.adjusted(1, 0, -1, -1));
+        painter->setClipRect(option.rect, Qt::IntersectClip);
+        if (selected || hover) {
+            painter->setBrush(selected ? option.palette.highlight() : option.palette.alternateBase());
+            painter->setPen(selected
+                                ? QPen(option.state & QStyle::State_HasFocus ? QColor("#AAB4C1") : QColor("#62666D"))
+                                : QPen(Qt::NoPen));
+            painter->drawRoundedRect(row_rect, 8, 8);
         }
         const auto text_color = option.palette.color(QPalette::Text);
         painter->setPen(text_color);
@@ -129,8 +167,14 @@ QWidget *navigation(const ui_context &context, QWidget *parent) {
     auto *layout = new QVBoxLayout(widget);
     layout->setContentsMargins(12, 20, 12, 16);
     layout->setSpacing(8);
-    auto *brand = label("XLibrary", "subheading");
-    layout->addWidget(brand);
+    auto *brand = new QHBoxLayout;
+    brand->setSpacing(10);
+    auto *logo = new QLabel;
+    logo->setPixmap(appearance::logo().pixmap(32, 32));
+    logo->setFixedSize(32, 32);
+    brand->addWidget(logo);
+    brand->addWidget(label("XLibrary", "brand"), 1);
+    layout->addLayout(brand);
     layout->addSpacing(16);
     auto *group = new QButtonGroup(widget);
     group->setExclusive(true);
@@ -273,15 +317,18 @@ QWidget *library(const ui_context &context, QWidget *parent) {
     auto *title = label("Библиотека", "heading");
     header->addWidget(title, 1);
     auto *sort = new QComboBox;
-    sort->addItems({"По названию", "Недавние запуски", "Сначала избранное"});
+    sort->addItems({"По названию", "Недавние запуски", "Сначала избранное", "По тегам", "По статусу"});
     sort->setAccessibleName("Сортировка приложений");
-    sort->setCurrentIndex(service->settings.value("library/sort", 0).toInt());
-    service->filter.set_sort_mode(sort->currentIndex());
-    QObject::connect(sort, &QComboBox::currentIndexChanged, widget, [=](int index) {
-        service->filter.set_sort_mode(index);
-        service->settings.setValue("library/sort", index);
-    });
+    sort->setCurrentIndex(qBound(0, service->settings.value("library/sort", 0).toInt(), 4));
+    const auto order =
+        service->settings.value("library/sort_order", 0).toInt() == 1 ? Qt::DescendingOrder : Qt::AscendingOrder;
+    service->filter.set_sort_mode(sort->currentIndex(), order);
+    QObject::connect(sort, &QComboBox::currentIndexChanged, widget,
+                     [=](int index) { service->filter.set_sort_mode(index); });
     header->addWidget(sort);
+    auto *remove = action_button(context.actions.value("remove_application"), false, "Удалить");
+    remove->setAccessibleName("Удалить выбранное приложение из библиотеки");
+    header->addWidget(remove);
     auto *scan = action_button(context.actions.value("discover"), false, "");
     scan->setAccessibleName("Найти установленные приложения");
     scan->setFixedWidth(44);
@@ -289,7 +336,7 @@ QWidget *library(const ui_context &context, QWidget *parent) {
     root->addLayout(header);
     auto *stack_widget = new QWidget;
     auto *stack = new QStackedLayout(stack_widget);
-    auto *view = new QTreeView;
+    auto *view = new ApplicationList;
     view->setObjectName("application_list");
     view->setModel(&service->filter);
     view->setItemDelegate(new ApplicationDelegate(view));
@@ -301,11 +348,35 @@ QWidget *library(const ui_context &context, QWidget *parent) {
     view->setEditTriggers(QAbstractItemView::NoEditTriggers);
     view->setMouseTracking(true);
     view->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    view->header()->setStretchLastSection(false);
     view->header()->setMinimumSectionSize(70);
     view->header()->setSectionResizeMode(0, QHeaderView::Stretch);
     view->header()->setSectionResizeMode(1, QHeaderView::Interactive);
-    view->header()->resizeSection(1, 140);
-    view->header()->resizeSection(2, 142);
+    view->header()->setSectionResizeMode(2, QHeaderView::Fixed);
+    view->header()->setSectionsClickable(true);
+    view->header()->setHighlightSections(false);
+    view->header()->setSortIndicatorShown(true);
+    view->header()->setSortIndicator(service->filter.sortColumn(), service->filter.sortOrder());
+    view->header()->setCursor(Qt::PointingHandCursor);
+    QObject::connect(view->header(), &QHeaderView::sectionClicked, widget, [=](int column) {
+        const auto mode = column == 1 ? 3 : column == 2 ? 4 : 0;
+        const auto direction = sort->currentIndex() == mode && service->filter.sortOrder() == Qt::AscendingOrder
+                                   ? Qt::DescendingOrder
+                                   : Qt::AscendingOrder;
+        service->filter.set_sort_mode(mode, direction);
+    });
+    QObject::connect(&service->filter, &LibraryFilter::sort_changed, widget, [=](int mode, Qt::SortOrder direction) {
+        const QSignalBlocker blocker(sort);
+        sort->setCurrentIndex(mode);
+        view->header()->setSortIndicator(service->filter.sortColumn(), direction);
+        service->settings.setValue("library/sort", mode);
+        service->settings.setValue("library/sort_order", static_cast<int>(direction));
+    });
+    auto *delete_shortcut = new QShortcut(QKeySequence(Qt::Key_Delete), view);
+    delete_shortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    delete_shortcut->setAutoRepeat(false);
+    QObject::connect(delete_shortcut, &QShortcut::activated, context.actions.value("remove_application"),
+                     &QAction::trigger);
     view->setContextMenuPolicy(Qt::CustomContextMenu);
     stack->addWidget(view);
     auto *empty = new QWidget;
@@ -323,7 +394,7 @@ QWidget *library(const ui_context &context, QWidget *parent) {
     stack->addWidget(empty);
     root->addWidget(stack_widget, 1);
     auto *footer = new QHBoxLayout;
-    footer->addWidget(label("↑↓  Выбор     Enter  Запустить     Ctrl+K  Поиск", "muted"), 1);
+    footer->addWidget(label("↑↓  Выбор     Enter  Запустить     Delete  Удалить     Ctrl+K  Поиск", "caption"), 1);
     auto *details = action_button(context.actions.value("details"), true);
     footer->addWidget(details);
     root->addLayout(footer);
@@ -401,24 +472,39 @@ QWidget *details(const ui_context &context, QWidget *parent) {
     root->setSpacing(12);
     auto *icon = new QLabel;
     icon->setFixedSize(56, 56);
-    auto *name = label("Выберите приложение", "subheading");
-    root->addWidget(icon);
-    root->addWidget(name);
+    auto *name = label("Выберите приложение", "application_title");
     auto *status = label("", "muted");
-    root->addWidget(status);
-    root->addSpacing(12);
-    root->addWidget(label("Теги", "muted"));
+    auto *identity = new QHBoxLayout;
+    identity->setSpacing(12);
+    identity->addWidget(icon, 0, Qt::AlignTop);
+    auto *identity_text = new QVBoxLayout;
+    identity_text->setSpacing(4);
+    identity_text->addWidget(name);
+    identity_text->addWidget(status);
+    identity->addLayout(identity_text, 1);
+    root->addLayout(identity);
+    root->addSpacing(8);
+    auto *tag_header = new QHBoxLayout;
+    tag_header->addWidget(label("Теги", "muted"), 1);
+    auto *edit_tags = action_button(context.actions.value("edit_application"), true, "Изменить");
+    edit_tags->setAccessibleName("Изменить теги приложения");
+    tag_header->addWidget(edit_tags);
+    root->addLayout(tag_header);
     auto *tags = label("—");
     root->addWidget(tags);
-    auto *edit_tags = action_button(context.actions.value("edit_application"), true, "Изменить теги");
-    root->addWidget(edit_tags);
-    root->addSpacing(12);
+    root->addSpacing(8);
     root->addWidget(label("Путь к приложению", "muted"));
     auto *path = new QLineEdit;
     path->setReadOnly(true);
     path->setMinimumWidth(0);
-    root->addWidget(path);
-    root->addWidget(action_button(context.actions.value("open_folder"), true));
+    auto *path_row = new QHBoxLayout;
+    path_row->setSpacing(8);
+    path_row->addWidget(path, 1);
+    auto *folder = action_button(context.actions.value("open_folder"), false, "");
+    folder->setAccessibleName("Открыть папку приложения");
+    folder->setFixedWidth(44);
+    path_row->addWidget(folder);
+    root->addLayout(path_row);
     auto *arguments = label("", "muted");
     root->addWidget(arguments);
     root->addSpacing(8);
@@ -427,8 +513,10 @@ QWidget *details(const ui_context &context, QWidget *parent) {
     root->addWidget(launch);
     root->addWidget(action_button(context.actions.value("edit_application")));
     root->addWidget(action_button(context.actions.value("favorite")));
+    auto *remove = action_button(context.actions.value("remove_application"));
+    remove->setProperty("danger", true);
+    root->addWidget(remove);
     root->addStretch();
-    root->addWidget(action_button(context.actions.value("remove_application"), true));
     auto update = [=] {
         const auto *record = service->selected();
         name->setText(record ? record->name : "Выберите приложение");
@@ -441,6 +529,7 @@ QWidget *details(const ui_context &context, QWidget *parent) {
         path->setCursorPosition(0);
         path->setToolTip(path->text());
         arguments->setText(record && !record->arguments.isEmpty() ? "Аргументы: " + record->arguments : QString{});
+        arguments->setVisible(!arguments->text().isEmpty());
         QIcon image = appearance::icon("app");
         if (record)
             for (int row = 0; row < service->model.rowCount(); ++row) {

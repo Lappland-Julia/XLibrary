@@ -88,6 +88,9 @@ QVariant LibraryModel::headerData(int section, Qt::Orientation orientation, int 
     if (orientation == Qt::Horizontal && requested_role == Qt::DisplayRole) {
         return QStringList{"Приложение", "Теги", "Статус"}.value(section);
     }
+    if (orientation == Qt::Horizontal && requested_role == Qt::ToolTipRole) {
+        return "Нажмите для сортировки. Повторный щелчок меняет направление.";
+    }
     return {};
 }
 
@@ -96,11 +99,14 @@ void LibraryModel::replace(QVector<app_record> applications) {
     records = std::move(applications);
     search_names.clear();
     search_paths.clear();
+    search_tags.clear();
     search_names.reserve(records.size());
     search_paths.reserve(records.size());
+    search_tags.reserve(records.size());
     for (const auto &record : records) {
         search_names.append(record.name.toCaseFolded());
         search_paths.append(QFileInfo(record.path).fileName().toCaseFolded());
+        search_tags.append(record.tags.join(", ").toCaseFolded());
     }
     endResetModel();
 }
@@ -165,9 +171,23 @@ void LibraryFilter::set_section(const QString &value, const QString &tag) {
 #endif
 }
 
-void LibraryFilter::set_sort_mode(int value) {
-    sort_mode = value;
-    invalidate();
+void LibraryFilter::set_sort_mode(int value, Qt::SortOrder order) {
+    const auto mode = qBound(0, value, 4);
+    const bool changed = sort_mode != mode;
+    sort_mode = mode;
+    const auto column = sort_mode == 3 ? 1 : sort_mode == 4 ? 2 : 0;
+    if (sortColumn() != column || sortOrder() != order)
+        QSortFilterProxyModel::sort(column, order);
+    else if (changed)
+        invalidate();
+    emit sort_changed(sort_mode, order);
+}
+
+void LibraryFilter::sort(int column, Qt::SortOrder order) {
+    if (column >= 0 && column < 3)
+        set_sort_mode(column == 1 ? 3 : column == 2 ? 4 : 0, order);
+    else
+        QSortFilterProxyModel::sort(column, order);
 }
 
 bool LibraryFilter::filterAcceptsRow(int row, const QModelIndex &parent) const {
@@ -199,6 +219,21 @@ bool LibraryFilter::lessThan(const QModelIndex &left, const QModelIndex &right) 
     const auto *model = static_cast<const LibraryModel *>(sourceModel());
     const auto &a = model->at(left.row());
     const auto &b = model->at(right.row());
+    if (sort_mode == 3) {
+        const auto &a_tags = model->tag_names(left.row());
+        const auto &b_tags = model->tag_names(right.row());
+        if (a_tags.isEmpty() != b_tags.isEmpty())
+            return !a_tags.isEmpty();
+        const auto comparison = QString::localeAwareCompare(a_tags, b_tags);
+        if (comparison != 0)
+            return comparison < 0;
+    }
+    if (sort_mode == 4) {
+        const auto a_status = a.running ? 0 : a.available ? 1 : 2;
+        const auto b_status = b.running ? 0 : b.available ? 1 : 2;
+        if (a_status != b_status)
+            return a_status < b_status;
+    }
     if (sort_mode == 1 && a.last_launch != b.last_launch)
         return a.last_launch > b.last_launch;
     if (sort_mode == 2 && a.favorite != b.favorite)

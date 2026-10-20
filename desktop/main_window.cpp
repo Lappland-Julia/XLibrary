@@ -8,7 +8,6 @@
 #include <QMessageBox>
 #include <QStackedWidget>
 #include <QStyleHints>
-#include <QTreeView>
 
 #include "appearance.h"
 #include "editors.h"
@@ -66,7 +65,7 @@ QWidget *shell(const ui_context &context, QWidget *parent) {
 
 MainWindow::MainWindow(DesktopService &service) : service(service), hotkey(this), tray(this) {
     setWindowTitle("XLibrary");
-    setWindowIcon(appearance::icon("x"));
+    setWindowIcon(appearance::logo());
     setMinimumSize(960, 640);
     resize(1280, 800);
     context.service = &service;
@@ -166,7 +165,7 @@ void MainWindow::create_actions() {
             open_dialog("application_editor", edit_context);
         }
     });
-    add("remove_application", "Удалить из библиотеки", "x", [this] {
+    add("remove_application", "Удалить из библиотеки", "trash", [this] {
         const auto *record = service.selected();
         if (!record)
             return;
@@ -177,6 +176,8 @@ void MainWindow::create_actions() {
                                   QMessageBox::Yes | QMessageBox::No, QMessageBox::No) == QMessageBox::Yes)
             service.remove_application(id);
     });
+    context.actions.value("remove_application")
+        ->setToolTip("Удалить выбранное приложение из библиотеки (Delete). Файлы приложения сохранятся.");
     add("favorite", "В избранное", "favorite", [this] {
         if (const auto *record = service.selected()) {
             auto updated = *record;
@@ -291,10 +292,6 @@ void MainWindow::update_layout() {
     if (auto *details = centralWidget() ? centralWidget()->findChild<QWidget *>("details") : nullptr) {
         details->setFixedWidth(appearance::scaled(service.settings, 304));
         details->setVisible(width() >= appearance::scaled(service.settings, 1120) && service.section() != "scenarios");
-    }
-    if (auto *view = findChild<QTreeView *>("application_list")) {
-        view->setColumnHidden(1, view->width() < 570);
-        view->setColumnHidden(2, view->width() < 380);
     }
 }
 

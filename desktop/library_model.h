@@ -16,6 +16,7 @@ private:
     QVector<app_record> records;
     QStringList search_names;
     QStringList search_paths;
+    QStringList search_tags;
     mutable QCache<QString, QIcon> icons{256};
     mutable QSet<QString> pending_icons;
     QThreadPool icon_pool;
@@ -36,6 +37,7 @@ public:
     const app_record &at(int row) const { return records[row]; }
     const QString &search_name(int row) const { return search_names[row]; }
     const QString &search_path(int row) const { return search_paths[row]; }
+    const QString &tag_names(int row) const { return search_tags[row]; }
     const QVector<app_record> &applications() const { return records; }
 };
 
@@ -55,7 +57,11 @@ public:
     explicit LibraryFilter(QObject *parent = nullptr);
     void set_query(const QString &query);
     void set_section(const QString &value, const QString &tag = {});
-    void set_sort_mode(int value);
+    void set_sort_mode(int value, Qt::SortOrder order = Qt::AscendingOrder);
+    void sort(int column, Qt::SortOrder order = Qt::AscendingOrder) override;
+
+signals:
+    void sort_changed(int mode, Qt::SortOrder order);
 };
 
 #endif
