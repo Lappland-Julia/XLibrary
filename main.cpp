@@ -1,6 +1,7 @@
 #include <windows.h>
 
 #include <chrono>
+#include <cstdint>
 #include <exception>
 #include <iostream>
 #include <thread>
@@ -45,14 +46,27 @@ int main() try {
                 }
             }
         } else {
+            std::uint32_t process_id = 0;
             try {
-                const auto process_id = manager.launch(input);
-                std::cout << "Launched process PID: " << process_id << "\n";
-                heartbeat = manager.heartbeat(input, process_id);
-                break;
+                process_id = manager.launch(input);
             } catch (const std::exception &e) {
                 std::cerr << e.what() << "\n";
+                continue;
             }
+
+            if (process_id == 0) {
+                std::cout << "Application opened; process PID is unavailable, monitoring skipped\n";
+                return 0;
+            }
+
+            std::cout << "Launched process PID: " << process_id << "\n";
+            try {
+                heartbeat = manager.heartbeat(input, process_id);
+            } catch (const std::exception &e) {
+                std::cerr << "Application opened, but process monitoring failed: " << e.what() << "\n";
+                return 0;
+            }
+            break;
         }
     }
 
@@ -61,14 +75,12 @@ int main() try {
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
         alive = heartbeat.is_alive();
     }
-    if (!alive) {
-        std::cout << "Process finished\n";
-    }
-
     if (const auto error_code = heartbeat.get_error_code(); error_code != 0) {
         std::cerr << "Cannot check process: " << error_code << "\n";
         return 1;
     }
+
+    std::cout << "Process finished\n";
 
     return 0;
 } catch (const std::exception &error) {

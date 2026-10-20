@@ -125,13 +125,12 @@ std::uint32_t Application::launch() {
     std::unique_ptr<void, decltype(&CloseHandle)> process_handle(launch_info.hProcess, &CloseHandle);
     if (!process_handle) {
         // Shell может передать запрос уже работающему приложению без создания процесса.
-        throw std::runtime_error("Application opened, but Windows did not return a process handle");
+        return 0;
     }
 
     const auto process_id = GetProcessId(process_handle.get());
     if (process_id == 0) {
-        const auto error_code = GetLastError();
-        throw std::runtime_error("Cannot obtain application PID: " + std::to_string(error_code));
+        return 0;
     }
 
     this->process_handle = std::move(process_handle);
