@@ -176,6 +176,7 @@ void appearance::apply(QSettings &settings, const QString &additional_style) {
         QLineEdit, QComboBox, QSpinBox, QKeySequenceEdit { background: %5; border: 1px solid %6; border-radius: 8px; padding: 8px 10px; min-height: %10px; selection-background-color: #68717C; }
         QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QKeySequenceEdit:focus, QPushButton:focus, QToolButton:focus { border: 1px solid #AAB4C1; }
         QLineEdit[invalid="true"] { border-color: #C88888; }
+        QLineEdit QToolButton { background: transparent; border: none; border-radius: 0; padding: 0; min-height: 0; }
         QComboBox::drop-down { border: none; width: 24px; }
         QAbstractItemView { background: %2; border: none; outline: none; selection-background-color: %7; }
         QAbstractItemView::item { padding: 6px; }
