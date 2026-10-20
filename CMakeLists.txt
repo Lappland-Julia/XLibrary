@@ -51,6 +51,8 @@ option(XLIBRARY_NATIVE_CPU
 
 include(FetchContent)
 find_package(Threads REQUIRED)
+set(CMAKE_INSTALL_BINDIR ".")
+find_package(Qt6 6.5 REQUIRED COMPONENTS Widgets Concurrent Network)
 
 FetchContent_Declare(sqlite3
         URL
@@ -79,8 +81,7 @@ target_link_libraries(sqlite3 PUBLIC
 # Приложение
 # ------------------------------------------------------------
 
-add_executable(XLibrary
-        main.cpp
+add_library(xlibrary_core STATIC
 
         src/Application.cpp
         src/Application.h
@@ -103,13 +104,44 @@ add_executable(XLibrary
         src/RegistryScan.h
 )
 
-target_link_libraries(XLibrary PRIVATE
+target_compile_definitions(xlibrary_core PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN)
+target_include_directories(xlibrary_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(xlibrary_core PUBLIC
         sqlite3
         Threads::Threads
 
         version
         shell32
+        gdi32
+        advapi32
 )
+
+qt_add_executable(XLibrary WIN32
+        main.cpp
+        desktop/catalog_types.h
+        desktop/catalog_store.h desktop/catalog_store.cpp
+        desktop/windows_integration.h desktop/windows_integration.cpp
+        desktop/library_model.h desktop/library_model.cpp
+        desktop/desktop_service.h desktop/desktop_service.cpp
+        desktop/appearance.h desktop/appearance.cpp
+        desktop/ui_registry.h desktop/ui_helpers.h
+        desktop/editors.h desktop/editors.cpp
+        desktop/library_views.h desktop/library_views.cpp
+        desktop/settings_view.h desktop/settings_view.cpp
+        desktop/main_window.h desktop/main_window.cpp
+)
+set_target_properties(XLibrary PROPERTIES AUTOMOC ON)
+
+target_link_libraries(XLibrary PRIVATE xlibrary_core Qt6::Widgets Qt6::Concurrent Qt6::Network ole32 uuid dwmapi)
+if(MSVC)
+    target_compile_options(XLibrary PRIVATE /utf-8 /W4)
+else()
+    target_compile_options(XLibrary PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+install(TARGETS XLibrary RUNTIME DESTINATION .)
+qt_generate_deploy_app_script(TARGET XLibrary OUTPUT_SCRIPT xlibrary_deploy_script NO_UNSUPPORTED_PLATFORM_ERROR)
+install(SCRIPT ${xlibrary_deploy_script})
 
 # ------------------------------------------------------------
 # Release: O2
@@ -121,7 +153,7 @@ target_link_libraries(XLibrary PRIVATE
 # Для GCC и Clang с GNU-интерфейсом используется -O2.
 # Опции цели добавляются после стандартных флагов конфигурации.
 
-foreach(xlibrary_target IN ITEMS XLibrary sqlite3)
+foreach(xlibrary_target IN ITEMS XLibrary xlibrary_core sqlite3)
     if(MSVC)
         target_compile_options(${xlibrary_target} PRIVATE
                 "$<$<CONFIG:Release>:/O2>"
@@ -148,7 +180,7 @@ if(XLIBRARY_ENABLE_IPO)
     )
 
     if(XLIBRARY_IPO_SUPPORTED)
-        set_property(TARGET XLibrary sqlite3 PROPERTY
+        set_property(TARGET XLibrary xlibrary_core sqlite3 PROPERTY
                 INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE
         )
     else()
@@ -216,4 +248,5 @@ if(XLIBRARY_NATIVE_CPU)
     target_compile_options(XLibrary PRIVATE
             "$<$<CONFIG:Release>:-march=native>"
     )
+    target_compile_options(xlibrary_core PRIVATE "$<$<CONFIG:Release>:-march=native>")
 endif()

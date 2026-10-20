@@ -1,0 +1,61 @@
+#ifndef XLIBRARY_LIBRARY_MODEL_H
+#define XLIBRARY_LIBRARY_MODEL_H
+
+#include <QAbstractTableModel>
+#include <QCache>
+#include <QIcon>
+#include <QSet>
+#include <QSortFilterProxyModel>
+#include <QThreadPool>
+
+#include "catalog_types.h"
+
+class LibraryModel : public QAbstractTableModel {
+    Q_OBJECT
+private:
+    QVector<app_record> records;
+    QStringList search_names;
+    QStringList search_paths;
+    mutable QCache<QString, QIcon> icons{256};
+    mutable QSet<QString> pending_icons;
+    QThreadPool icon_pool;
+    void request_icon(const QString &path) const;
+
+public:
+    enum role { id_role = Qt::UserRole + 1, record_role, tags_role, running_role, favorite_role, available_role };
+    explicit LibraryModel(QObject *parent = nullptr);
+    ~LibraryModel() override;
+    int rowCount(const QModelIndex &parent = {}) const override;
+    int columnCount(const QModelIndex &parent = {}) const override;
+    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
+    QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
+    QHash<int, QByteArray> roleNames() const override;
+    void replace(QVector<app_record> applications);
+    void update_running(const QSet<QString> &paths);
+    const app_record *find(qint64 id) const;
+    const app_record &at(int row) const { return records[row]; }
+    const QString &search_name(int row) const { return search_names[row]; }
+    const QString &search_path(int row) const { return search_paths[row]; }
+    const QVector<app_record> &applications() const { return records; }
+};
+
+class LibraryFilter : public QSortFilterProxyModel {
+    Q_OBJECT
+private:
+    QStringList terms;
+    QString section = "library";
+    QString selected_tag;
+    int sort_mode = 0;
+
+protected:
+    bool filterAcceptsRow(int row, const QModelIndex &parent) const override;
+    bool lessThan(const QModelIndex &left, const QModelIndex &right) const override;
+
+public:
+    explicit LibraryFilter(QObject *parent = nullptr);
+    void set_query(const QString &query);
+    void set_section(const QString &value, const QString &tag = {});
+    void set_sort_mode(int value);
+};
+
+#endif
