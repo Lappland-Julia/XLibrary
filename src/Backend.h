@@ -8,5 +8,6 @@
 #include "Manager.h"
 #include "Heartbeat.h"
 #include "WindowManager.h"
+#include "RegistryScan.h"
 
 #endif //XLIBRARY_BACKEND_H

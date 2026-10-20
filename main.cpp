@@ -2,11 +2,14 @@
 #include <exception>
 #include <iostream>
 #include <thread>
+#include <windows.h>
 #include "src/Backend.h"
 
 int main() try {
+    SetConsoleCP(CP_UTF8);
+    SetConsoleOutputCP(CP_UTF8);
+
     const Database database{false};
-    database.setup();
 
     // Example
     /*const auto firefox_app = Application(LR"(C:\Program Files\Mozilla Firefox\firefox.exe)");
@@ -15,7 +18,7 @@ int main() try {
     auto manager = Manager(database.get_applications());
     std::cout << "Available apps: ";
     for (auto name: manager.get_names()) {
-        std::cout << name << "; ";
+        std::cout << name << ";\n";
     }
     std::cout << "\n";
 
@@ -27,11 +30,17 @@ int main() try {
         std::cout << "\n";
         if (input == "add") {
             std::getline(std::cin, input);
-            std::filesystem::path file_path = input;
+            std::filesystem::path file_path = std::u8string(input.begin(), input.end());
             auto new_app = Application(file_path);
             database.add_application(new_app);
             manager.add_application(new_app);
             std::cout << "\n";
+        }
+        else if (input == "check") {
+            for (auto apps = xlibrary::scan_registry_applications(); auto app: apps) {
+                database.add_application(app);
+                manager.add_application(app);
+            }
         }
         else {
             try {
