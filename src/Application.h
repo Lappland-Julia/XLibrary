@@ -26,7 +26,7 @@ public:
     std::uint32_t launch() const;
 
     Application();
-    explicit Application(const std::string &file_title, const std::filesystem::path &executable_path) { this->file_title=file_title; this->set_executable(executable_path); }
+    explicit Application(const std::string &file_title, const std::filesystem::path &executable_path);
     explicit Application(const std::filesystem::path &executable_path);
 
     friend bool operator==(const Application &a, const Application &b) {

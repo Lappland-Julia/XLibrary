@@ -197,6 +197,14 @@ Application::Application() {
     this->set_empty();
 }
 
+Application::Application(const std::string &file_title, const std::filesystem::path &executable_path)
+    : Application() {
+    if (!executable_path.empty()) {
+        this->set_executable(executable_path);
+    }
+    this->file_title = file_title;
+}
+
 Application::Application(const std::filesystem::path &executable_path) {
     this->set_executable(executable_path);
 }

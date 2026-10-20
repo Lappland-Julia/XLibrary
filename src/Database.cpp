@@ -196,9 +196,16 @@ std::vector<Application> Database::get_applications() const {
             throw std::runtime_error("Cannot read application data");
         }
 
-        std::string file_title = std::to_string(*name);
+        const std::string file_title(
+            reinterpret_cast<const char *>(name), sqlite3_column_bytes(statement.get(), 0)
+        );
         std::filesystem::path file_path;
-        file_path = reinterpret_cast<const char *>(path);;
+        if (!path_is_null) {
+            const std::u8string path_string(
+                reinterpret_cast<const char8_t *>(path), sqlite3_column_bytes(statement.get(), 1)
+            );
+            file_path = path_string;
+        }
 
         auto app = Application(file_title, file_path);
         applications.push_back(app);
