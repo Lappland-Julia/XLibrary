@@ -222,7 +222,7 @@ std::vector<::Application> make_applications(scan_result<discovered_application>
     std::vector<::Application> applications;
     applications.reserve(scan.entries.size());
     for (const auto &entry : scan.entries) {
-        // Конструктор XLibrary сам читает имя EXE и создаёт UUID.
+        // Конструктор Application сам читает имя EXE.
         applications.emplace_back(entry.executable);
     }
     return applications;
@@ -258,7 +258,7 @@ std::vector<::Application> scan_registry_applications(std::vector<scan_issue> *i
     detail::scan_result<detail::discovered_application> scan;
     detail::scan_app_paths(registry_scope::current_user, scan);
     detail::scan_app_paths(registry_scope::local_machine, scan);
-    // Удаляем дубликаты путей до создания Application и генерации UUID.
+    // Удаляем дубликаты путей до создания Application.
     return detail::make_applications(std::move(scan), issues);
 }
 

@@ -23,7 +23,7 @@ public:
     void add_application(const Application &application);
     void add_applications(const std::vector<Application> &applications);
 
-    std::uint32_t launch(const std::string title) const;
+    std::uint32_t launch(const std::string title);
     Heartbeat heartbeat(const std::string title, std::uint32_t process_id) const;
 
     std::vector<Application> get_apps() const;

@@ -1,4 +1,4 @@
-#include <objbase.h>
+#include <windows.h>
 #include <shellapi.h>
 #include <winver.h>
 
@@ -17,29 +17,11 @@
 
 #include "Application.h"
 
-std::string Application::generate_uuid() {
-    GUID uuid{};
-
-    if (const HRESULT result = CoCreateGuid(&uuid); FAILED(result)) {
-        throw std::runtime_error("UUID creation failed");
+std::uint32_t Application::get_pid() const noexcept {
+    if (!this->process_handle || WaitForSingleObject(this->process_handle.get(), 0) != WAIT_TIMEOUT) {
+        return 0;
     }
-
-    wchar_t buffer[39]{};
-    const int length = StringFromGUID2(uuid, buffer, 39);
-
-    if (length == 0) {
-        throw std::runtime_error("UUID conversion failed");
-    }
-
-    std::string uuid_string;
-    uuid_string.reserve(36);
-
-    // Пропускаем скобки и завершающий ноль; символы GUID входят в ASCII.
-    for (int i = 1; i < length - 2; ++i) {
-        uuid_string.push_back(static_cast<char>(buffer[i]));
-    }
-
-    return uuid_string;
+    return this->pid;
 }
 
 std::string Application::read_application_name(const std::filesystem::path &executable_path) {
@@ -120,8 +102,11 @@ std::string Application::read_application_name(const std::filesystem::path &exec
     return fallback_name;
 }
 
-std::uint32_t Application::launch() const {
+std::uint32_t Application::launch() {
     const std::filesystem::path executable_path = this->get_file_path();
+    if (executable_path.empty()) {
+        throw std::invalid_argument("Application executable path is empty");
+    }
     const auto working_directory = executable_path.parent_path();
 
     SHELLEXECUTEINFOW launch_info{};
@@ -137,7 +122,7 @@ std::uint32_t Application::launch() const {
         throw std::runtime_error("Application launch failed: " + std::to_string(error_code));
     }
 
-    const std::unique_ptr<void, decltype(&CloseHandle)> process_handle(launch_info.hProcess, &CloseHandle);
+    std::unique_ptr<void, decltype(&CloseHandle)> process_handle(launch_info.hProcess, &CloseHandle);
     if (!process_handle) {
         // Shell может передать запрос уже работающему приложению без создания процесса.
         throw std::runtime_error("Application opened, but Windows did not return a process handle");
@@ -149,6 +134,8 @@ std::uint32_t Application::launch() const {
         throw std::runtime_error("Cannot obtain application PID: " + std::to_string(error_code));
     }
 
+    this->process_handle = std::move(process_handle);
+    this->pid = process_id;
     return process_id;
 }
 
@@ -157,7 +144,7 @@ std::ostream &operator<<(std::ostream &stream, const Application &application) {
     const std::string path_string(path_utf8.begin(), path_utf8.end());
 
     return stream << "Application object: {\n"
-                  << "\tUUID: " << application.get_uuid() << "\n"
+                  << "\tPID: " << application.get_pid() << "\n"
                   << "\tTitle: " << application.get_file_title() << "\n"
                   << "\tPath: " << std::quoted(path_string) << " }";
 }
@@ -180,6 +167,10 @@ void Application::set_executable(std::filesystem::path const &file_path) {
         application_name = this->read_application_name(executable_path);
     }
 
+    if (this->file_path != executable_path) {
+        this->process_handle.reset();
+        this->pid = 0;
+    }
     this->file_path = executable_path;
     this->file_title = application_name;
 }

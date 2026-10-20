@@ -107,7 +107,6 @@ target_link_libraries(XLibrary PRIVATE
         sqlite3
         Threads::Threads
 
-        ole32
         version
         shell32
 )

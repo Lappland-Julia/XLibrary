@@ -30,7 +30,7 @@ void Manager::add_applications(const std::vector<Application> &applications) {
     }
 }
 
-std::uint32_t Manager::launch(const std::string title) const {
+std::uint32_t Manager::launch(const std::string title) {
     for (auto &app : this->applications) {
         if (this->to_lower(app.get_file_title()) == this->to_lower(title)) {
             return app.launch();

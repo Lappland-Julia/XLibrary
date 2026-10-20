@@ -4,14 +4,16 @@
 #include <cstdint>
 #include <filesystem>
 #include <iosfwd>
+#include <memory>
 #include <string>
 
 class Application {
 private:
-    std::string uuid = generate_uuid();
+    std::uint32_t pid = 0;
+    // Копии разделяют дескриптор, чтобы завершённый процесс не подменился повторно использованным PID.
+    std::shared_ptr<void> process_handle;
     std::string file_title = "";
     std::filesystem::path file_path = LR"(~)";
-    static std::string generate_uuid();
     static std::string read_application_name(const std::filesystem::path &executable_path);
     void set_empty() {
         this->file_title = "";
@@ -19,12 +21,12 @@ private:
     }
 
 public:
-    std::string get_uuid() const { return this->uuid; }
+    std::uint32_t get_pid() const noexcept;
     std::string get_file_title() const { return this->file_title; }
     std::filesystem::path get_file_path() const { return this->file_path; }
 
     void set_executable(std::filesystem::path const &file_path);
-    std::uint32_t launch() const;
+    std::uint32_t launch();
 
     Application();
     explicit Application(const std::string &file_title, const std::filesystem::path &executable_path);
