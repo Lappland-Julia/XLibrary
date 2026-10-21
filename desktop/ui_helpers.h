@@ -4,13 +4,86 @@
 #include <QDialog>
 #include <QFrame>
 #include <QLabel>
+#include <QPainter>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QVariantAnimation>
 #include <QVBoxLayout>
 
 #include "ui_registry.h"
+#include "windows_integration.h"
 
 namespace ui_helpers {
+class TransitionOverlay : public QWidget {
+public:
+    QPixmap snapshot;
+    qreal opacity = 1.0;
+
+    explicit TransitionOverlay(QWidget *parent) : QWidget(parent) {
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        hide();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter painter(this);
+        // Непрозрачный фон сохраняет тон поверхности во время перехода.
+        painter.fillRect(rect(), palette().window());
+        painter.setOpacity(opacity);
+        painter.drawPixmap(rect(), snapshot);
+    }
+};
+
+class PageTransition : public QWidget {
+private:
+    QWidget *contents;
+    TransitionOverlay *overlay;
+    QVariantAnimation *animation;
+
+protected:
+    void resizeEvent(QResizeEvent *event) override {
+        animation->stop();
+        overlay->hide();
+        overlay->snapshot = QPixmap{};
+        QWidget::resizeEvent(event);
+    }
+
+public:
+    explicit PageTransition(QWidget *contents)
+        : contents(contents), overlay(new TransitionOverlay(this)), animation(new QVariantAnimation(this)) {
+        setAutoFillBackground(true);
+        auto *layout = new QVBoxLayout(this);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->addWidget(contents);
+        animation->setDuration(150);
+        animation->setStartValue(0.45);
+        animation->setEndValue(1.0);
+        animation->setEasingCurve(QEasingCurve::OutCubic);
+        connect(animation, &QVariantAnimation::valueChanged, this, [this](const QVariant &value) {
+            overlay->opacity = value.toReal();
+            overlay->update();
+        });
+        connect(animation, &QVariantAnimation::finished, this, [this] {
+            overlay->hide();
+            overlay->snapshot = QPixmap{};
+        });
+    }
+
+    void start() {
+        animation->stop();
+        overlay->hide();
+        overlay->snapshot = QPixmap{};
+        if (!contents->isVisible() || !desktop_windows::animations_enabled())
+            return;
+        overlay->snapshot = contents->grab();
+        overlay->setGeometry(rect());
+        overlay->opacity = animation->startValue().toReal();
+        overlay->show();
+        overlay->raise();
+        animation->start();
+    }
+};
+
 inline QLabel *label(const QString &text, const char *property = nullptr) {
     auto *result = new QLabel(text);
     result->setTextFormat(Qt::PlainText);

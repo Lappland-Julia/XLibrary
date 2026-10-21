@@ -216,14 +216,18 @@ template <class T> void append_issues(scan_result<T> &scan, std::vector<scan_iss
     }
 }
 
-std::vector<::Application> make_applications(scan_result<discovered_application> scan,
-                                             std::vector<scan_issue> *issues) {
+std::vector<::Application> make_applications(scan_result<discovered_application> scan, std::vector<scan_issue> *issues,
+                                             const registry_progress &progress = {}) {
     append_issues(scan, issues);
     std::vector<::Application> applications;
     applications.reserve(scan.entries.size());
+    if (progress && !progress(0, scan.entries.size()))
+        return {};
     for (const auto &entry : scan.entries) {
         // Конструктор Application сам читает имя EXE.
         applications.emplace_back(entry.executable);
+        if (progress && !progress(applications.size(), scan.entries.size()))
+            return {};
     }
     return applications;
 }
@@ -254,12 +258,13 @@ std::vector<uninstall_entry> scan_uninstall_local_machine(std::vector<scan_issue
     return std::move(scan.entries);
 }
 
-std::vector<::Application> scan_registry_applications(std::vector<scan_issue> *issues) {
+std::vector<::Application> scan_registry_applications(std::vector<scan_issue> *issues,
+                                                      const registry_progress &progress) {
     detail::scan_result<detail::discovered_application> scan;
     detail::scan_app_paths(registry_scope::current_user, scan);
     detail::scan_app_paths(registry_scope::local_machine, scan);
     // Удаляем дубликаты путей до создания Application.
-    return detail::make_applications(std::move(scan), issues);
+    return detail::make_applications(std::move(scan), issues, progress);
 }
 
 } // namespace xlibrary

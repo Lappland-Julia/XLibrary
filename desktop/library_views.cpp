@@ -11,6 +11,7 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QPainter>
+#include <QProgressBar>
 #include <QResizeEvent>
 #include <QShortcut>
 #include <QSignalBlocker>
@@ -202,6 +203,7 @@ QWidget *navigation(const ui_context &context, QWidget *parent) {
                                    {"scenarios", "Сценарии", "scenarios"}};
     for (const auto &link : links) {
         auto *item = button(link[1], "quiet");
+        item->setProperty("navigation", true);
         item->setIcon(appearance::icon(link[2]));
         item->setCheckable(true);
         item->setProperty("navigation_section", link[0]);
@@ -325,6 +327,68 @@ QWidget *search_bar(const ui_context &context, QWidget *parent) {
     return widget;
 }
 
+QWidget *discovery_status(const ui_context &context, QWidget *parent) {
+    auto *service = static_cast<DesktopService *>(context.service);
+    auto *panel = new QFrame(parent);
+    panel->setObjectName("discovery_panel");
+    auto *layout = new QVBoxLayout(panel);
+    layout->setContentsMargins(16, 12, 16, 12);
+    layout->setSpacing(8);
+    auto *header = new QHBoxLayout;
+    auto *stage = label("");
+    header->addWidget(stage, 1);
+    auto *percentage = label("");
+    percentage->setObjectName("discovery_percentage");
+    percentage->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    header->addWidget(percentage);
+    auto *cancel = button("Отмена", "quiet");
+    cancel->setAccessibleName("Отменить сканирование приложений");
+    QObject::connect(cancel, &QPushButton::clicked, service, &DesktopService::cancel_discovery);
+    header->addWidget(cancel);
+    layout->addLayout(header);
+    auto *bar = new QProgressBar;
+    bar->setObjectName("discovery_bar");
+    bar->setAccessibleName("Ход сканирования приложений");
+    bar->setTextVisible(false);
+    bar->setFixedHeight(8);
+    layout->addWidget(bar);
+    auto *counter = label("", "caption");
+    layout->addWidget(counter);
+    const auto update = [=] {
+        const auto &progress = service->discovery_status();
+        const bool active = service->is_discovering();
+        if (!active && progress.percent != 100) {
+            panel->hide();
+            return;
+        }
+        panel->show();
+        stage->setText(progress.stage);
+        const bool indeterminate = progress.percent < 0;
+        bar->setRange(0, indeterminate ? 0 : 100);
+        if (!indeterminate)
+            bar->setValue(progress.percent);
+        percentage->setText(indeterminate ? "…" : QString::number(progress.percent) + '%');
+        counter->setText(indeterminate ? "Собираем записи из выбранных источников"
+                                       : QString(progress.percent < 90 ? "Проверено записей: %1 из %2"
+                                                                       : "Обработано кандидатов: %1 из %2")
+                                             .arg(progress.processed)
+                                             .arg(progress.total));
+        cancel->setVisible(active);
+        cancel->setEnabled(!service->is_cancelling_discovery());
+        cancel->setText(service->is_cancelling_discovery() ? "Отмена…" : "Отмена");
+        if (!active) {
+            QTimer::singleShot(1200, panel, [=] {
+                if (!service->is_discovering())
+                    panel->hide();
+            });
+        }
+    };
+    QObject::connect(service, &DesktopService::discovery_changed, panel, update);
+    QObject::connect(service, &DesktopService::discovery_progress_changed, panel, update);
+    update();
+    return panel;
+}
+
 QWidget *library(const ui_context &context, QWidget *parent) {
     auto *service = static_cast<DesktopService *>(context.service);
     auto *widget = new QWidget(parent);
@@ -352,6 +416,7 @@ QWidget *library(const ui_context &context, QWidget *parent) {
     scan->setFixedWidth(44);
     header->addWidget(scan);
     root->addLayout(header);
+    root->addWidget(context.registry->create("discovery_progress", context, widget));
     auto *stack_widget = new QWidget;
     auto *stack = new QStackedLayout(stack_widget);
     auto *view = new ApplicationList;
@@ -663,6 +728,7 @@ QWidget *scenarios(const ui_context &context, QWidget *parent) {
 }
 
 void register_library_views(UiRegistry &registry) {
+    registry.add_default("discovery_progress", discovery_status);
     registry.add_default("navigation", navigation);
     registry.add_default("search_bar", search_bar);
     registry.add_default("library", library);

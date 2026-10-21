@@ -103,6 +103,7 @@ QWidget *library_settings(const ui_context &context, QWidget *) {
     widget->layout()->addWidget(label(
         "Поиск выполняется по запросу. Изменённые источники будут использованы после сохранения настроек.", "muted"));
     widget->layout()->addWidget(action_button(context.actions.value("discover")));
+    widget->layout()->addWidget(context.registry->create("discovery_progress", context, widget));
     widget->layout()->addWidget(label("Импорт и экспорт библиотеки", "subheading"));
     widget->layout()->addWidget(label("JSON сохраняет приложения, параметры, избранное и теги. Существующие записи при "
                                       "импорте сохраняются. Приложения автоматически не запускаются.",
@@ -179,6 +180,8 @@ QDialog *settings_dialog(const ui_context &context, QWidget *parent) {
     root->addWidget(label("Настройки", "heading"));
     auto *body = new QHBoxLayout;
     auto *categories = new QListWidget;
+    categories->setObjectName("settings_categories");
+    categories->setSpacing(2);
     categories->setFixedWidth(180);
     auto *pages = new QStackedWidget;
     const QList<QPair<QString, QString>> sections{
@@ -190,10 +193,16 @@ QDialog *settings_dialog(const ui_context &context, QWidget *parent) {
         item->setSizeHint({160, 44});
         pages->addWidget(scroll(context.registry->create(section.second, context, pages)));
     }
+    auto *transition = new PageTransition(pages);
     body->addWidget(categories);
-    body->addWidget(pages, 1);
+    body->addWidget(transition, 1);
     root->addLayout(body, 1);
-    QObject::connect(categories, &QListWidget::currentRowChanged, pages, &QStackedWidget::setCurrentIndex);
+    QObject::connect(categories, &QListWidget::currentRowChanged, pages, [=](int index) {
+        if (pages->currentIndex() == index)
+            return;
+        pages->setCurrentIndex(index);
+        transition->start();
+    });
     categories->setCurrentRow(0);
     auto *error = label("", "muted");
     root->addWidget(error);

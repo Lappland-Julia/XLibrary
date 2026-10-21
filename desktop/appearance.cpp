@@ -77,6 +77,10 @@ QIcon appearance::icon(const QString &name, const QColor &color) {
         painter.drawPolyline(QPolygonF{QPointF(6, 6), QPointF(7, 21), QPointF(17, 21), QPointF(18, 6)});
         painter.drawLine(QPointF(10, 10), QPointF(10, 17));
         painter.drawLine(QPointF(14, 10), QPointF(14, 17));
+    } else if (name == "info") {
+        painter.drawEllipse(QRectF(3, 3, 18, 18));
+        painter.drawPoint(QPointF(12, 8));
+        painter.drawLine(QPointF(12, 11), QPointF(12, 16));
     } else if (name == "x") {
         painter.drawLine(QPointF(6, 5), QPointF(18, 19));
         painter.drawLine(QPointF(18, 5), QPointF(6, 19));
@@ -88,28 +92,7 @@ QIcon appearance::icon(const QString &name, const QColor &color) {
 }
 
 QIcon appearance::logo() {
-    static const QIcon result = [] {
-        QIcon image;
-        for (const int size : {16, 24, 32, 48, 64, 128, 256}) {
-            QPixmap pixmap(size, size);
-            pixmap.fill(Qt::transparent);
-            QPainter painter(&pixmap);
-            painter.setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing);
-            painter.scale(size / 64.0, size / 64.0);
-            painter.setPen(QPen(QColor("#87919D"), 1.5));
-            painter.setBrush(QColor("#3A414A"));
-            painter.drawRoundedRect(QRectF(2, 2, 60, 60), 14, 14);
-            QFont font("Segoe UI");
-            font.setPixelSize(30);
-            font.setWeight(QFont::DemiBold);
-            painter.setFont(font);
-            painter.setPen(QColor("#F3F4F6"));
-            painter.drawText(QRectF(2, 0, 60, 64), Qt::AlignCenter, "XL");
-            painter.end();
-            image.addPixmap(pixmap);
-        }
-        return image;
-    }();
+    static const QIcon result(":/assets/xlibrary.ico");
     return result;
 }
 
@@ -173,6 +156,10 @@ void appearance::apply(QSettings &settings, const QString &additional_style) {
         QPushButton[danger="true"]:hover { border-color: %15; }
         QPushButton[quiet="true"] { background: transparent; border-color: transparent; text-align: left; }
         QPushButton[quiet="true"]:hover, QPushButton[quiet="true"]:checked { background: %7; }
+        QPushButton[navigation="true"] { background: transparent; border: 1px solid transparent; border-radius: 10px; padding: 9px 12px; text-align: left; }
+        QPushButton[navigation="true"]:hover { background: %5; border-color: %6; }
+        QPushButton[navigation="true"]:checked { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 %17, stop:1 %7); border-color: %16; font-weight: 600; }
+        QPushButton[navigation="true"]:focus { border-color: #AAB4C1; }
         QLineEdit, QComboBox, QSpinBox, QKeySequenceEdit { background: %5; border: 1px solid %6; border-radius: 8px; padding: 8px 10px; min-height: %10px; selection-background-color: #68717C; }
         QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QKeySequenceEdit:focus, QPushButton:focus, QToolButton:focus { border: 1px solid #AAB4C1; }
         QLineEdit[invalid="true"] { border-color: #C88888; }
@@ -181,15 +168,32 @@ void appearance::apply(QSettings &settings, const QString &additional_style) {
         QAbstractItemView { background: %2; border: none; outline: none; selection-background-color: %7; }
         QAbstractItemView::item { padding: 6px; }
         QAbstractItemView::item:selected { background: %7; }
+        QListWidget#settings_categories { background: transparent; }
+        QListWidget#settings_categories::item { margin: 3px 0; padding: 8px 12px; border: 1px solid transparent; border-radius: 10px; }
+        QListWidget#settings_categories::item:hover { background: %5; border-color: %6; }
+        QListWidget#settings_categories::item:selected { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 %17, stop:1 %7); border-color: %16; color: %1; font-weight: 600; }
+        QListWidget#settings_categories::item:selected:focus { border-color: #AAB4C1; }
         QTreeView#application_list::item { padding: 0; background: transparent; }
         QTreeView#application_list::item:selected, QTreeView#application_list::item:hover { background: transparent; }
         QHeaderView::section { background: %2; color: %4; border: none; border-bottom: 1px solid %6; padding: 8px 12px; text-align: left; }
         QHeaderView::section:hover { color: %1; background: %3; }
         QScrollArea { border: none; background: transparent; }
-        QScrollBar:vertical { background: transparent; width: 8px; margin: 2px; }
-        QScrollBar::handle:vertical { background: #62666D; min-height: 24px; border-radius: 3px; }
-        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
+        QScrollBar:vertical { background: transparent; border: none; width: 12px; margin: 6px 3px; }
+        QScrollBar::handle:vertical { background: %18; border: none; min-height: 32px; border-radius: 3px; }
+        QScrollBar::handle:vertical:hover { background: %19; }
+        QScrollBar::handle:vertical:pressed { background: %4; }
+        QScrollBar::add-line:vertical { background: transparent; border: none; height: 0; subcontrol-position: bottom; subcontrol-origin: margin; }
+        QScrollBar::sub-line:vertical { background: transparent; border: none; height: 0; subcontrol-position: top; subcontrol-origin: margin; }
         QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
+        QScrollBar:horizontal { background: transparent; border: none; height: 12px; margin: 3px 6px; }
+        QScrollBar::handle:horizontal { background: %18; border: none; min-width: 32px; border-radius: 3px; }
+        QScrollBar::handle:horizontal:hover { background: %19; }
+        QScrollBar::handle:horizontal:pressed { background: %4; }
+        QScrollBar::add-line:horizontal { background: transparent; border: none; width: 0; subcontrol-position: right; subcontrol-origin: margin; }
+        QScrollBar::sub-line:horizontal { background: transparent; border: none; width: 0; subcontrol-position: left; subcontrol-origin: margin; }
+        QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: transparent; }
+        QScrollBar::up-arrow, QScrollBar::down-arrow, QScrollBar::left-arrow, QScrollBar::right-arrow { image: none; background: transparent; border: none; width: 0; height: 0; }
+        QAbstractScrollArea::corner { background: transparent; border: none; }
         QMenu { background: %3; border: 1px solid %6; padding: 6px; }
         QMenu::item { padding: 8px 24px 8px 12px; border-radius: 6px; }
         QMenu::item:selected { background: %7; }
@@ -198,6 +202,15 @@ void appearance::apply(QSettings &settings, const QString &additional_style) {
         QCheckBox::indicator { width: 18px; height: 18px; }
         QToolTip { background: %3; color: %1; border: 1px solid %6; padding: 6px; }
         QStatusBar { background: %2; color: %4; }
+        QFrame#notification { background: %5; border: 1px solid %16; border-radius: 12px; }
+        QToolButton#notification_dismiss { background: transparent; border: 1px solid transparent; border-radius: 7px; padding: 0; min-height: 0; }
+        QToolButton#notification_dismiss:hover { background: %7; border-color: %6; }
+        QToolButton#notification_dismiss:pressed { background: %3; }
+        QToolButton#notification_dismiss:focus { border-color: #AAB4C1; }
+        QFrame#discovery_panel { background: %3; border: 1px solid %6; border-radius: 12px; }
+        QLabel#discovery_percentage { color: %1; font-weight: 600; }
+        QProgressBar#discovery_bar { background: %5; border: none; border-radius: 4px; }
+        QProgressBar#discovery_bar::chunk { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #68717C, stop:1 #9AA6B4); border-radius: 4px; }
         QSplitter::handle { background: %6; }
         QGroupBox { border: none; margin-top: 24px; font-weight: 600; }
         QGroupBox::title { subcontrol-origin: margin; }
@@ -206,6 +219,7 @@ void appearance::apply(QSettings &settings, const QString &additional_style) {
                       selection.name(), QString::number(scaled(settings, 24)), QString::number(scaled(settings, 16)),
                       QString::number(scaled(settings, 20)), QString::number(scaled(settings, 14)),
                       QString::number(scaled(settings, 20)), QString::number(scaled(settings, 18)),
-                      QString::number(scaled(settings, 12)), dark ? "#C88888" : "#A34040");
+                      QString::number(scaled(settings, 12)), dark ? "#C88888" : "#A34040", dark ? "#59616C" : "#A7B1BF",
+                      dark ? "#434850" : "#E4E8ED", dark ? "#555960" : "#B3BAC4", dark ? "#7B8491" : "#8994A3");
     qApp->setStyleSheet(style + additional_style);
 }

@@ -28,23 +28,58 @@ bool is_system_application(const QString &path) {
             return true;
     }
 
-    // WindowsApps содержит и сторонние приложения: учитываем только пакеты Microsoft и псевдоним winget.
-    for (const auto *folder : {&FOLDERID_ProgramFiles, &FOLDERID_ProgramFilesX64, &FOLDERID_LocalAppData}) {
+    // В WindowsApps есть обычные приложения Microsoft: издатель сам по себе не означает компонент ОС.
+    for (const auto *folder :
+         {&FOLDERID_ProgramFiles, &FOLDERID_ProgramFilesX86, &FOLDERID_ProgramFilesX64, &FOLDERID_LocalAppData}) {
         PWSTR raw_path = nullptr;
         if (FAILED(SHGetKnownFolderPath(*folder, 0, nullptr, &raw_path)))
             continue;
         const auto root = QDir::fromNativeSeparators(QString::fromWCharArray(raw_path));
         CoTaskMemFree(raw_path);
         const bool local = IsEqualGUID(*folder, FOLDERID_LocalAppData);
+        if (!local) {
+            // Компоненты Windows находятся также вне каталога самой ОС.
+            for (const auto *directory : {"Internet Explorer/", "Windows Mail/", "Windows Media Player/",
+                                          "Windows Photo Viewer/", "Windows Defender/", "Windows NT/", "WSL/"}) {
+                if (normalized_path.startsWith(root + '/' + directory, Qt::CaseInsensitive))
+                    return true;
+            }
+        }
         const auto prefix = root + (local ? "/Microsoft/WindowsApps/" : "/WindowsApps/");
         if (!normalized_path.startsWith(prefix, Qt::CaseInsensitive))
             continue;
         const auto relative_path = normalized_path.mid(prefix.size());
-        if (relative_path.startsWith("Microsoft.", Qt::CaseInsensitive) ||
+        if (relative_path.startsWith("Microsoft.Windows", Qt::CaseInsensitive) ||
+            relative_path.startsWith("MicrosoftWindows.", Qt::CaseInsensitive) ||
+            relative_path.startsWith("Microsoft.DesktopAppInstaller_", Qt::CaseInsensitive) ||
+            relative_path.startsWith("MicrosoftCorporationII.WindowsSubsystemForLinux_", Qt::CaseInsensitive) ||
             (local && relative_path.compare("winget.exe", Qt::CaseInsensitive) == 0))
             return true;
     }
+    for (const auto *folder :
+         {&FOLDERID_ProgramFilesCommon, &FOLDERID_ProgramFilesCommonX86, &FOLDERID_ProgramFilesCommonX64}) {
+        PWSTR raw_path = nullptr;
+        if (FAILED(SHGetKnownFolderPath(*folder, 0, nullptr, &raw_path)))
+            continue;
+        const auto prefix = QDir::fromNativeSeparators(QString::fromWCharArray(raw_path)) + "/microsoft shared/ink/";
+        CoTaskMemFree(raw_path);
+        if (normalized_path.startsWith(prefix, Qt::CaseInsensitive))
+            return true;
+    }
     return false;
+}
+
+bool should_import_application(const app_record &record) {
+    if (is_system_application(record.path))
+        return false;
+    // Имя ярлыка может быть локализовано, а удаление может запускать основной EXE с аргументом.
+    static const QRegularExpression uninstaller_name("^(?:uninstall|uninst|unins[0-9]*)\\.exe$",
+                                                     QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression uninstall_argument(
+        "(?:^|\\s)(?:--start-uninstaller|[-/]uninstall(?:remove)?|[-/]removeonly)(?=\\s|$)",
+        QRegularExpression::CaseInsensitiveOption);
+    return !uninstaller_name.match(QFileInfo(record.path).fileName()).hasMatch() &&
+           !uninstall_argument.match(record.arguments).hasMatch();
 }
 
 QString process_path(DWORD process_id) {
@@ -211,24 +246,13 @@ app_record desktop_windows::resolve_application(const QString &path) {
 }
 
 QVector<app_record> desktop_windows::discover(bool registry, bool start_menu, QStringList &issues,
-                                              const std::atomic_bool &cancelled) {
+                                              const std::atomic_bool &cancelled,
+                                              const std::function<void(const discovery_progress &)> &progress) {
     QVector<app_record> result;
-    if (registry) {
-        std::vector<xlibrary::scan_issue> registry_issues;
-        for (const auto &application : xlibrary::scan_registry_applications(&registry_issues)) {
-            if (cancelled.load())
-                return {};
-            app_record record;
-            record.name = QString::fromUtf8(application.get_file_title());
-            record.path = QDir::fromNativeSeparators(QString::fromStdWString(application.get_file_path().wstring()));
-            if (is_system_application(record.path) && application_icon(record.path).isNull())
-                continue;
-            result.append(std::move(record));
-        }
-        if (!registry_issues.empty()) {
-            issues.append(QString("Недоступно разделов реестра: %1").arg(registry_issues.size()));
-        }
-    }
+    QStringList shortcuts;
+    // Сначала собираем очередь: её размер не меняется во время чтения ярлыков и метаданных EXE.
+    if (progress)
+        progress({-1, 0, 0, "Подготовка списка приложений…"});
     if (start_menu) {
         for (const auto *folder : {&FOLDERID_Programs, &FOLDERID_CommonPrograms}) {
             if (cancelled.load())
@@ -244,20 +268,53 @@ QVector<app_record> desktop_windows::discover(bool registry, bool start_menu, QS
             while (files.hasNext()) {
                 if (cancelled.load())
                     return {};
-                const auto path = files.next();
-                try {
-                    const auto record = resolve_application(path);
-                    if (record.available && QFileInfo(record.path).suffix().compare("exe", Qt::CaseInsensitive) == 0) {
-                        if (is_system_application(record.path) && application_icon(record.path).isNull())
-                            continue;
-                        result.append(record);
-                    }
-                } catch (const std::exception &) {
-                    issues.append(QFileInfo(path).fileName());
-                }
+                shortcuts.append(files.next());
             }
         }
     }
+    qsizetype registry_count = 0;
+    const auto report = [&](qsizetype processed, qsizetype total, const QString &stage) {
+        if (progress)
+            progress({total > 0 ? static_cast<int>(90.0 * processed / total) : 90, processed, total, stage});
+    };
+    if (registry && !cancelled.load()) {
+        std::vector<xlibrary::scan_issue> registry_issues;
+        const auto applications = xlibrary::scan_registry_applications(&registry_issues, [&](std::size_t processed,
+                                                                                             std::size_t total) {
+            registry_count = static_cast<qsizetype>(total);
+            report(static_cast<qsizetype>(processed), registry_count + shortcuts.size(), "Проверка реестра Windows");
+            return !cancelled.load();
+        });
+        for (const auto &application : applications) {
+            if (cancelled.load())
+                return {};
+            app_record record;
+            record.name = QString::fromUtf8(application.get_file_title());
+            record.path = QDir::fromNativeSeparators(QString::fromStdWString(application.get_file_path().wstring()));
+            if (should_import_application(record))
+                result.append(std::move(record));
+        }
+        if (!registry_issues.empty())
+            issues.append(QString("Недоступно разделов реестра: %1").arg(registry_issues.size()));
+    }
+    const auto total = registry_count + shortcuts.size();
+    for (qsizetype index = 0; index < shortcuts.size(); ++index) {
+        if (cancelled.load())
+            return {};
+        report(registry_count + index, total, "Проверка ярлыков меню «Пуск»");
+        const auto &path = shortcuts[index];
+        try {
+            const auto record = resolve_application(path);
+            if (record.available && QFileInfo(record.path).suffix().compare("exe", Qt::CaseInsensitive) == 0 &&
+                should_import_application(record))
+                result.append(record);
+        } catch (const std::exception &) {
+            issues.append(QFileInfo(path).fileName());
+        }
+    }
+    if (cancelled.load())
+        return {};
+    report(total, total, "Проверка приложений завершена");
     return result;
 }
 
@@ -275,6 +332,12 @@ bool desktop_windows::set_autostart(bool enabled, QString &error) {
         return false;
     }
     return true;
+}
+
+bool desktop_windows::animations_enabled() {
+    BOOL enabled = TRUE;
+    SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &enabled, 0);
+    return enabled;
 }
 
 void desktop_windows::apply_backdrop(QWidget *window, bool dark, bool glass) {

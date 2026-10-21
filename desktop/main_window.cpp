@@ -8,6 +8,7 @@
 #include <QMessageBox>
 #include <QStackedWidget>
 #include <QStyleHints>
+#include <QToolButton>
 
 #include "appearance.h"
 #include "editors.h"
@@ -28,25 +29,45 @@ QWidget *shell(const ui_context &context, QWidget *parent) {
     root->addWidget(context.registry->create("navigation", context, widget));
     auto *center = new QWidget;
     auto *body = new QVBoxLayout(center);
-    body->setContentsMargins(20, 16, 20, 0);
+    body->setContentsMargins(20, 16, 20, 16);
     body->setSpacing(20);
     body->addWidget(context.registry->create("search_bar", context, center));
     auto *pages = new QStackedWidget;
     pages->addWidget(context.registry->create("library", context, pages));
     pages->addWidget(context.registry->create("scenarios", context, pages));
-    body->addWidget(pages, 1);
-    auto *notice = new QWidget;
-    notice->setProperty("panel", true);
+    auto *transition = new PageTransition(pages);
+    body->addWidget(transition, 1);
+    auto *notice = new QFrame;
+    notice->setObjectName("notification");
     auto *notice_layout = new QHBoxLayout(notice);
+    notice_layout->setContentsMargins(14, 10, 10, 10);
+    notice_layout->setSpacing(10);
+    auto *notice_icon = new QLabel;
     auto *notice_text = label("");
     notice_text->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    auto *dismiss = button("×");
+    auto *dismiss = new QToolButton;
+    dismiss->setObjectName("notification_dismiss");
+    dismiss->setCursor(Qt::PointingHandCursor);
     dismiss->setAccessibleName("Закрыть уведомление");
+    dismiss->setToolTip("Закрыть уведомление");
+    auto update_notice = [=] {
+        const QColor color(appearance::is_dark(*context.settings) ? "#A8A9AF" : "#555B64");
+        const auto icon_size = appearance::scaled(*context.settings, 20);
+        notice_icon->setPixmap(appearance::icon("info", color).pixmap(icon_size, icon_size));
+        notice_icon->setFixedSize(icon_size, icon_size);
+        dismiss->setIcon(appearance::icon("x", color));
+        dismiss->setIconSize(QSize(icon_size, icon_size));
+        const auto close_size = appearance::scaled(*context.settings, 28);
+        dismiss->setFixedSize(close_size, close_size);
+    };
+    update_notice();
+    QObject::connect(service, &DesktopService::appearance_changed, notice, update_notice);
+    notice_layout->addWidget(notice_icon, 0, Qt::AlignVCenter);
     notice_layout->addWidget(notice_text, 1);
-    notice_layout->addWidget(dismiss);
+    notice_layout->addWidget(dismiss, 0, Qt::AlignTop);
     notice->hide();
     body->addWidget(notice);
-    QObject::connect(dismiss, &QPushButton::clicked, notice, &QWidget::hide);
+    QObject::connect(dismiss, &QToolButton::clicked, notice, &QWidget::hide);
     QObject::connect(service, &DesktopService::message, notice, [=](const QString &text) {
         notice_text->setText(text);
         notice->show();
@@ -58,7 +79,14 @@ QWidget *shell(const ui_context &context, QWidget *parent) {
     root->addWidget(center, 1);
     root->addWidget(context.registry->create("details", context, widget));
     QObject::connect(service, &DesktopService::navigation_changed, widget,
-                     [=] { pages->setCurrentIndex(service->section() == "scenarios" ? 1 : 0); });
+                     [=, section = service->section(), tag = service->tag()]() mutable {
+                         if (section == service->section() && tag == service->tag())
+                             return;
+                         section = service->section();
+                         tag = service->tag();
+                         pages->setCurrentIndex(section == "scenarios" ? 1 : 0);
+                         transition->start();
+                     });
     return widget;
 }
 }

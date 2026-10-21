@@ -1,7 +1,9 @@
 #ifndef XLIBRARY_REGISTRY_SCAN_H
 #define XLIBRARY_REGISTRY_SCAN_H
 
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -39,7 +41,10 @@ struct uninstall_entry {
 // Исключения конструктора Application не подавляются.
 std::vector<::Application> scan_app_paths_current_user(std::vector<scan_issue> *issues = nullptr);
 std::vector<::Application> scan_app_paths_local_machine(std::vector<scan_issue> *issues = nullptr);
-std::vector<::Application> scan_registry_applications(std::vector<scan_issue> *issues = nullptr);
+// Счётчик относится к уникальным существующим EXE; false из callback отменяет чтение их метаданных.
+using registry_progress = std::function<bool(std::size_t, std::size_t)>;
+std::vector<::Application> scan_registry_applications(std::vector<scan_issue> *issues = nullptr,
+                                                      const registry_progress &progress = {});
 
 // Отдельные списки: никогда не объединяются со списком Application.
 std::vector<uninstall_entry> scan_uninstall_current_user(std::vector<scan_issue> *issues = nullptr);

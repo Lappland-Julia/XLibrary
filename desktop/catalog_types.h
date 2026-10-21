@@ -24,6 +24,13 @@ struct app_record {
     qint64 last_launch = 0;
 };
 
+struct discovery_progress {
+    int percent = -1;
+    qsizetype processed = 0;
+    qsizetype total = 0;
+    QString stage;
+};
+
 struct scenario_step {
     qint64 application_id = 0;
     int delay_ms = 0;
