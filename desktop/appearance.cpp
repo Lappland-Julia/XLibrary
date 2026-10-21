@@ -174,10 +174,22 @@ void appearance::apply(QSettings &settings, const QString &additional_style) {
         QHeaderView::section { background: %2; color: %4; border: none; border-bottom: 1px solid %6; padding: 8px 12px; text-align: left; }
         QHeaderView::section:hover { color: %1; background: %3; }
         QScrollArea { border: none; background: transparent; }
-        QScrollBar:vertical { background: transparent; width: 8px; margin: 2px; }
-        QScrollBar::handle:vertical { background: #62666D; min-height: 24px; border-radius: 3px; }
-        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
+        QScrollBar:vertical { background: transparent; border: none; width: 12px; margin: 6px 3px; }
+        QScrollBar::handle:vertical { background: %18; border: none; min-height: 32px; border-radius: 3px; }
+        QScrollBar::handle:vertical:hover { background: %19; }
+        QScrollBar::handle:vertical:pressed { background: %4; }
+        QScrollBar::add-line:vertical { background: transparent; border: none; height: 0; subcontrol-position: bottom; subcontrol-origin: margin; }
+        QScrollBar::sub-line:vertical { background: transparent; border: none; height: 0; subcontrol-position: top; subcontrol-origin: margin; }
         QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
+        QScrollBar:horizontal { background: transparent; border: none; height: 12px; margin: 3px 6px; }
+        QScrollBar::handle:horizontal { background: %18; border: none; min-width: 32px; border-radius: 3px; }
+        QScrollBar::handle:horizontal:hover { background: %19; }
+        QScrollBar::handle:horizontal:pressed { background: %4; }
+        QScrollBar::add-line:horizontal { background: transparent; border: none; width: 0; subcontrol-position: right; subcontrol-origin: margin; }
+        QScrollBar::sub-line:horizontal { background: transparent; border: none; width: 0; subcontrol-position: left; subcontrol-origin: margin; }
+        QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: transparent; }
+        QScrollBar::up-arrow, QScrollBar::down-arrow, QScrollBar::left-arrow, QScrollBar::right-arrow { image: none; background: transparent; border: none; width: 0; height: 0; }
+        QAbstractScrollArea::corner { background: transparent; border: none; }
         QMenu { background: %3; border: 1px solid %6; padding: 6px; }
         QMenu::item { padding: 8px 24px 8px 12px; border-radius: 6px; }
         QMenu::item:selected { background: %7; }
@@ -198,7 +210,7 @@ void appearance::apply(QSettings &settings, const QString &additional_style) {
                       selection.name(), QString::number(scaled(settings, 24)), QString::number(scaled(settings, 16)),
                       QString::number(scaled(settings, 20)), QString::number(scaled(settings, 14)),
                       QString::number(scaled(settings, 20)), QString::number(scaled(settings, 18)),
-                      QString::number(scaled(settings, 12)), dark ? "#C88888" : "#A34040",
-                      dark ? "#59616C" : "#A7B1BF", dark ? "#434850" : "#E4E8ED");
+                      QString::number(scaled(settings, 12)), dark ? "#C88888" : "#A34040", dark ? "#59616C" : "#A7B1BF",
+                      dark ? "#434850" : "#E4E8ED", dark ? "#555960" : "#B3BAC4", dark ? "#7B8491" : "#8994A3");
     qApp->setStyleSheet(style + additional_style);
 }
