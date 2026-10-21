@@ -28,6 +28,7 @@ private:
     std::shared_ptr<std::atomic<quint64>> scenario_generation = std::make_shared<std::atomic<quint64>>(0);
     QSet<qint64> launching;
     bool discovering = false;
+    discovery_progress scan_progress;
     std::shared_ptr<std::atomic_bool> discovery_cancelled = std::make_shared<std::atomic_bool>(false);
     bool ready = false;
     qint64 selected_id = 0;
@@ -45,6 +46,8 @@ public:
     ~DesktopService() override;
     bool is_ready() const { return ready; }
     bool is_discovering() const { return discovering; }
+    bool is_cancelling_discovery() const { return discovering && discovery_cancelled->load(); }
+    const discovery_progress &discovery_status() const { return scan_progress; }
     bool is_scenario_active() const { return scenario_active; }
     qint64 selection() const { return selected_id; }
     const app_record *selected() const { return model.find(selected_id); }
@@ -80,6 +83,7 @@ signals:
     void application_resolved(const QString &requested_path, const app_record &record);
     void scenario_saved(qint64 id);
     void discovery_changed();
+    void discovery_progress_changed();
     void launch_succeeded();
     void scenario_changed(const QString &status);
     void appearance_changed();

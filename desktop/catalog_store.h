@@ -2,6 +2,7 @@
 #define XLIBRARY_CATALOG_STORE_H
 
 #include <atomic>
+#include <functional>
 
 #include "catalog_types.h"
 #include "src/Database.h"
@@ -23,7 +24,8 @@ public:
     void remove_scenario(qint64 id);
     void record_launch(qint64 id);
     void clear_history();
-    int import_records(const QVector<app_record> &records, const std::atomic_bool *cancelled = nullptr);
+    int import_records(const QVector<app_record> &records, const std::atomic_bool *cancelled = nullptr,
+                       const std::function<void(qsizetype, qsizetype)> &progress = {});
     QString path() const;
 };
 

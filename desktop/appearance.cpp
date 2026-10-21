@@ -177,6 +177,10 @@ void appearance::apply(QSettings &settings, const QString &additional_style) {
         QCheckBox::indicator { width: 18px; height: 18px; }
         QToolTip { background: %3; color: %1; border: 1px solid %6; padding: 6px; }
         QStatusBar { background: %2; color: %4; }
+        QFrame#discovery_panel { background: %3; border: 1px solid %6; border-radius: 12px; }
+        QLabel#discovery_percentage { color: %1; font-weight: 600; }
+        QProgressBar#discovery_bar { background: %5; border: none; border-radius: 4px; }
+        QProgressBar#discovery_bar::chunk { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #68717C, stop:1 #9AA6B4); border-radius: 4px; }
         QSplitter::handle { background: %6; }
         QGroupBox { border: none; margin-top: 24px; font-weight: 600; }
         QGroupBox::title { subcontrol-origin: margin; }

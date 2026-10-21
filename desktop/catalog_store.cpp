@@ -360,7 +360,8 @@ void CatalogStore::clear_history() {
     execute("UPDATE desktop_application SET last_launch = 0;");
 }
 
-int CatalogStore::import_records(const QVector<app_record> &records, const std::atomic_bool *cancelled) {
+int CatalogStore::import_records(const QVector<app_record> &records, const std::atomic_bool *cancelled,
+                                 const std::function<void(qsizetype, qsizetype)> &progress) {
     Transaction transaction(database.get_connection());
     QSet<QString> names;
     QSet<QString> paths;
@@ -370,9 +371,12 @@ int CatalogStore::import_records(const QVector<app_record> &records, const std::
         paths.insert(QDir::fromNativeSeparators(current.text(1)).toCaseFolded());
     }
     int count = 0;
-    for (const auto &record : records) {
+    for (qsizetype index = 0; index < records.size(); ++index) {
         if (cancelled && cancelled->load())
             throw std::runtime_error("Поиск приложений отменён.");
+        if (progress)
+            progress(index, records.size());
+        const auto &record = records[index];
         const auto path = QDir::fromNativeSeparators(record.path).toCaseFolded();
         if (!names.contains(record.name) && !paths.contains(path)) {
             validate_application(record);
@@ -385,6 +389,10 @@ int CatalogStore::import_records(const QVector<app_record> &records, const std::
             ++count;
         }
     }
+    if (cancelled && cancelled->load())
+        throw std::runtime_error("Поиск приложений отменён.");
     transaction.commit();
+    if (progress)
+        progress(records.size(), records.size());
     return count;
 }

@@ -2,6 +2,7 @@
 #define XLIBRARY_WINDOWS_INTEGRATION_H
 
 #include <atomic>
+#include <functional>
 #include <QAbstractNativeEventFilter>
 #include <QImage>
 #include <QKeySequence>
@@ -20,7 +21,8 @@ void launch_application(const app_record &record);
 void open_folder(const QString &path);
 QImage application_icon(const QString &path);
 app_record resolve_application(const QString &path);
-QVector<app_record> discover(bool registry, bool start_menu, QStringList &issues, const std::atomic_bool &cancelled);
+QVector<app_record> discover(bool registry, bool start_menu, QStringList &issues, const std::atomic_bool &cancelled,
+                             const std::function<void(const discovery_progress &)> &progress = {});
 bool set_autostart(bool enabled, QString &error);
 void apply_backdrop(QWidget *window, bool dark, bool glass);
 }

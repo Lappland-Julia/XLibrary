@@ -103,6 +103,7 @@ QWidget *library_settings(const ui_context &context, QWidget *) {
     widget->layout()->addWidget(label(
         "Поиск выполняется по запросу. Изменённые источники будут использованы после сохранения настроек.", "muted"));
     widget->layout()->addWidget(action_button(context.actions.value("discover")));
+    widget->layout()->addWidget(context.registry->create("discovery_progress", context, widget));
     widget->layout()->addWidget(label("Импорт и экспорт библиотеки", "subheading"));
     widget->layout()->addWidget(label("JSON сохраняет приложения, параметры, избранное и теги. Существующие записи при "
                                       "импорте сохраняются. Приложения автоматически не запускаются.",

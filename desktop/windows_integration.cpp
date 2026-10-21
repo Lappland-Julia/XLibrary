@@ -246,24 +246,13 @@ app_record desktop_windows::resolve_application(const QString &path) {
 }
 
 QVector<app_record> desktop_windows::discover(bool registry, bool start_menu, QStringList &issues,
-                                              const std::atomic_bool &cancelled) {
+                                              const std::atomic_bool &cancelled,
+                                              const std::function<void(const discovery_progress &)> &progress) {
     QVector<app_record> result;
-    if (registry) {
-        std::vector<xlibrary::scan_issue> registry_issues;
-        for (const auto &application : xlibrary::scan_registry_applications(&registry_issues)) {
-            if (cancelled.load())
-                return {};
-            app_record record;
-            record.name = QString::fromUtf8(application.get_file_title());
-            record.path = QDir::fromNativeSeparators(QString::fromStdWString(application.get_file_path().wstring()));
-            if (!should_import_application(record))
-                continue;
-            result.append(std::move(record));
-        }
-        if (!registry_issues.empty()) {
-            issues.append(QString("Недоступно разделов реестра: %1").arg(registry_issues.size()));
-        }
-    }
+    QStringList shortcuts;
+    // Сначала собираем очередь: её размер не меняется во время чтения ярлыков и метаданных EXE.
+    if (progress)
+        progress({-1, 0, 0, "Подготовка списка приложений…"});
     if (start_menu) {
         for (const auto *folder : {&FOLDERID_Programs, &FOLDERID_CommonPrograms}) {
             if (cancelled.load())
@@ -279,20 +268,53 @@ QVector<app_record> desktop_windows::discover(bool registry, bool start_menu, QS
             while (files.hasNext()) {
                 if (cancelled.load())
                     return {};
-                const auto path = files.next();
-                try {
-                    const auto record = resolve_application(path);
-                    if (record.available && QFileInfo(record.path).suffix().compare("exe", Qt::CaseInsensitive) == 0) {
-                        if (!should_import_application(record))
-                            continue;
-                        result.append(record);
-                    }
-                } catch (const std::exception &) {
-                    issues.append(QFileInfo(path).fileName());
-                }
+                shortcuts.append(files.next());
             }
         }
     }
+    qsizetype registry_count = 0;
+    const auto report = [&](qsizetype processed, qsizetype total, const QString &stage) {
+        if (progress)
+            progress({total > 0 ? static_cast<int>(90.0 * processed / total) : 90, processed, total, stage});
+    };
+    if (registry && !cancelled.load()) {
+        std::vector<xlibrary::scan_issue> registry_issues;
+        const auto applications = xlibrary::scan_registry_applications(&registry_issues, [&](std::size_t processed,
+                                                                                             std::size_t total) {
+            registry_count = static_cast<qsizetype>(total);
+            report(static_cast<qsizetype>(processed), registry_count + shortcuts.size(), "Проверка реестра Windows");
+            return !cancelled.load();
+        });
+        for (const auto &application : applications) {
+            if (cancelled.load())
+                return {};
+            app_record record;
+            record.name = QString::fromUtf8(application.get_file_title());
+            record.path = QDir::fromNativeSeparators(QString::fromStdWString(application.get_file_path().wstring()));
+            if (should_import_application(record))
+                result.append(std::move(record));
+        }
+        if (!registry_issues.empty())
+            issues.append(QString("Недоступно разделов реестра: %1").arg(registry_issues.size()));
+    }
+    const auto total = registry_count + shortcuts.size();
+    for (qsizetype index = 0; index < shortcuts.size(); ++index) {
+        if (cancelled.load())
+            return {};
+        report(registry_count + index, total, "Проверка ярлыков меню «Пуск»");
+        const auto &path = shortcuts[index];
+        try {
+            const auto record = resolve_application(path);
+            if (record.available && QFileInfo(record.path).suffix().compare("exe", Qt::CaseInsensitive) == 0 &&
+                should_import_application(record))
+                result.append(record);
+        } catch (const std::exception &) {
+            issues.append(QFileInfo(path).fileName());
+        }
+    }
+    if (cancelled.load())
+        return {};
+    report(total, total, "Проверка приложений завершена");
     return result;
 }
 
