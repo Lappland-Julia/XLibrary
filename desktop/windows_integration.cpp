@@ -334,6 +334,12 @@ bool desktop_windows::set_autostart(bool enabled, QString &error) {
     return true;
 }
 
+bool desktop_windows::animations_enabled() {
+    BOOL enabled = TRUE;
+    SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &enabled, 0);
+    return enabled;
+}
+
 void desktop_windows::apply_backdrop(QWidget *window, bool dark, bool glass) {
     const auto handle = reinterpret_cast<HWND>(window->winId());
     const BOOL dark_value = dark;

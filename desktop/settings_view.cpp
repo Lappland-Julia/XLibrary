@@ -196,7 +196,13 @@ QDialog *settings_dialog(const ui_context &context, QWidget *parent) {
     body->addWidget(categories);
     body->addWidget(pages, 1);
     root->addLayout(body, 1);
-    QObject::connect(categories, &QListWidget::currentRowChanged, pages, &QStackedWidget::setCurrentIndex);
+    auto *transition = new PageTransition(pages);
+    QObject::connect(categories, &QListWidget::currentRowChanged, pages, [=](int index) {
+        if (pages->currentIndex() == index)
+            return;
+        pages->setCurrentIndex(index);
+        transition->start();
+    });
     categories->setCurrentRow(0);
     auto *error = label("", "muted");
     root->addWidget(error);

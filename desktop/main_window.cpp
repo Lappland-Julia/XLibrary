@@ -34,6 +34,7 @@ QWidget *shell(const ui_context &context, QWidget *parent) {
     auto *pages = new QStackedWidget;
     pages->addWidget(context.registry->create("library", context, pages));
     pages->addWidget(context.registry->create("scenarios", context, pages));
+    auto *transition = new PageTransition(pages);
     body->addWidget(pages, 1);
     auto *notice = new QWidget;
     notice->setProperty("panel", true);
@@ -58,7 +59,14 @@ QWidget *shell(const ui_context &context, QWidget *parent) {
     root->addWidget(center, 1);
     root->addWidget(context.registry->create("details", context, widget));
     QObject::connect(service, &DesktopService::navigation_changed, widget,
-                     [=] { pages->setCurrentIndex(service->section() == "scenarios" ? 1 : 0); });
+                     [=, section = service->section(), tag = service->tag()]() mutable {
+                         if (section == service->section() && tag == service->tag())
+                             return;
+                         section = service->section();
+                         tag = service->tag();
+                         pages->setCurrentIndex(section == "scenarios" ? 1 : 0);
+                         transition->start();
+                     });
     return widget;
 }
 }

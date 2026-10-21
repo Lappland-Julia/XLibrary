@@ -3,14 +3,48 @@
 
 #include <QDialog>
 #include <QFrame>
+#include <QGraphicsOpacityEffect>
 #include <QLabel>
+#include <QPropertyAnimation>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QVBoxLayout>
 
 #include "ui_registry.h"
+#include "windows_integration.h"
 
 namespace ui_helpers {
+class PageTransition : public QObject {
+private:
+    QWidget *contents;
+    QGraphicsOpacityEffect *opacity;
+    QPropertyAnimation *animation;
+
+public:
+    explicit PageTransition(QWidget *contents)
+        : QObject(contents), contents(contents), opacity(new QGraphicsOpacityEffect(contents)),
+          animation(new QPropertyAnimation(opacity, "opacity", this)) {
+        contents->setGraphicsEffect(opacity);
+        opacity->setEnabled(false);
+        animation->setDuration(150);
+        animation->setEndValue(1.0);
+        animation->setEasingCurve(QEasingCurve::OutCubic);
+        connect(animation, &QPropertyAnimation::finished, this, [this] { opacity->setEnabled(false); });
+    }
+
+    void start() {
+        const auto from = animation->state() == QAbstractAnimation::Running ? qMax(0.55, opacity->opacity()) : 0.45;
+        animation->stop();
+        opacity->setEnabled(false);
+        if (!contents->isVisible() || !desktop_windows::animations_enabled())
+            return;
+        animation->setStartValue(from);
+        opacity->setOpacity(from);
+        opacity->setEnabled(true);
+        animation->start();
+    }
+};
+
 inline QLabel *label(const QString &text, const char *property = nullptr) {
     auto *result = new QLabel(text);
     result->setTextFormat(Qt::PlainText);

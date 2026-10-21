@@ -24,6 +24,7 @@ app_record resolve_application(const QString &path);
 QVector<app_record> discover(bool registry, bool start_menu, QStringList &issues, const std::atomic_bool &cancelled,
                              const std::function<void(const discovery_progress &)> &progress = {});
 bool set_autostart(bool enabled, QString &error);
+bool animations_enabled();
 void apply_backdrop(QWidget *window, bool dark, bool glass);
 }
 
