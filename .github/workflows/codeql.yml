@@ -1,0 +1,86 @@
+name: CodeQL Advanced
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  merge_group:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '33 9 * * 6'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            os: ubuntu-24.04
+            build-mode: none
+          - language: c-cpp
+            os: windows-2022
+            build-mode: manual
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up MSVC
+        if: matrix.language == 'c-cpp'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        with:
+          arch: x64
+
+      - name: Install Qt
+        if: matrix.language == 'c-cpp'
+        uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4
+        with:
+          version: '6.8.3'
+          arch: win64_msvc2022_64
+          cache: true
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-extended
+
+      # Отдельная сборка после init нужна для перехвата компиляции CodeQL.
+      - name: Build C and C++
+        if: matrix.language == 'c-cpp'
+        shell: pwsh
+        run: |
+          cmake -S . -B build-codeql -G Ninja `
+            -DCMAKE_BUILD_TYPE=Debug `
+            -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR" `
+            -DXLIBRARY_ENABLE_IPO=OFF `
+            -DXLIBRARY_NATIVE_CPU=OFF
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          cmake --build build-codeql --target XLibrary --parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        with:
+          category: /language:${{ matrix.language }}
