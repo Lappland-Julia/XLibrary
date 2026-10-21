@@ -71,9 +71,11 @@ signals:
     void notification(const QString &message);
 };
 
-DesktopService::DesktopService(QObject *parent)
+DesktopService::DesktopService(QObject *parent, const QString &profile_path)
     : QObject(parent), worker(new CatalogWorker), model(this), filter(this),
-      settings(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/settings.ini",
+      settings((profile_path.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)
+                                       : profile_path) +
+                   "/settings.ini",
                QSettings::IniFormat) {
     filter.setSourceModel(&model);
     discovery_pool.setMaxThreadCount(1);

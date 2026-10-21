@@ -38,5 +38,7 @@
 local-docs/*
 
 # CMake output
+build/
+dist/
 build-*/
 cmake-build-*/

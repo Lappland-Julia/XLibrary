@@ -41,7 +41,7 @@ public:
     LibraryModel model;
     LibraryFilter filter;
     QSettings settings;
-    explicit DesktopService(QObject *parent = nullptr);
+    explicit DesktopService(QObject *parent = nullptr, const QString &profile_path = {});
     ~DesktopService() override;
     bool is_ready() const { return ready; }
     bool is_discovering() const { return discovering; }

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(XLibrary LANGUAGES C CXX)
+project(XLibrary VERSION 0.1.0 LANGUAGES C CXX)
 
 # Использовать время распаковки файлов загружаемых архивов.
 if(POLICY CMP0135)
@@ -131,6 +131,7 @@ qt_add_executable(XLibrary WIN32
         desktop/main_window.h desktop/main_window.cpp
 )
 set_target_properties(XLibrary PROPERTIES AUTOMOC ON)
+target_compile_definitions(XLibrary PRIVATE XLIBRARY_VERSION="${PROJECT_VERSION}")
 
 target_link_libraries(XLibrary PRIVATE xlibrary_core Qt6::Widgets Qt6::Concurrent Qt6::Network ole32 uuid dwmapi)
 if(MSVC)
