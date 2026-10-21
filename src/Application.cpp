@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstring>
 #include <cwchar>
+#include <cwctype>
 #include <iomanip>
 #include <iterator>
 #include <memory>
