@@ -19,6 +19,8 @@ if(NOT WIN32)
     )
 endif()
 
+enable_language(RC)
+
 # ------------------------------------------------------------
 # Стандарт языка
 # ------------------------------------------------------------
@@ -118,6 +120,7 @@ target_link_libraries(xlibrary_core PUBLIC
 
 qt_add_executable(XLibrary WIN32
         main.cpp
+        assets/application_icon.rc
         desktop/catalog_types.h
         desktop/catalog_store.h desktop/catalog_store.cpp
         desktop/windows_integration.h desktop/windows_integration.cpp
@@ -131,6 +134,17 @@ qt_add_executable(XLibrary WIN32
         desktop/main_window.h desktop/main_window.cpp
 )
 set_target_properties(XLibrary PROPERTIES AUTOMOC ON)
+set_source_files_properties(assets/application_icon.rc PROPERTIES
+        OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/xlibrary.ico"
+)
+if(MINGW)
+    # windres через popen некорректно обрабатывает пробелы в пути к препроцессору.
+    set_property(SOURCE assets/application_icon.rc APPEND PROPERTY COMPILE_OPTIONS --use-temp-file)
+endif()
+qt_add_resources(XLibrary application_images
+        PREFIX "/"
+        FILES assets/xlibrary.ico
+)
 target_compile_definitions(XLibrary PRIVATE XLIBRARY_VERSION="${PROJECT_VERSION}")
 
 target_link_libraries(XLibrary PRIVATE xlibrary_core Qt6::Widgets Qt6::Concurrent Qt6::Network ole32 uuid dwmapi)

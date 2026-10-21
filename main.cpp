@@ -11,6 +11,7 @@
 #include <QTemporaryDir>
 #include <QTimer>
 
+#include "desktop/appearance.h"
 #include "desktop/desktop_service.h"
 #include "desktop/main_window.h"
 
@@ -19,6 +20,7 @@ int main(int argc, char *argv[]) {
     application.setOrganizationName("XLibrary");
     application.setApplicationName("XLibrary");
     application.setApplicationVersion(XLIBRARY_VERSION);
+    application.setWindowIcon(appearance::logo());
     application.setQuitOnLastWindowClosed(false);
     application.setStyle("Fusion");
     const bool check_startup = application.arguments().contains("--check-startup");

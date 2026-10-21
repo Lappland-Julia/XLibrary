@@ -88,28 +88,7 @@ QIcon appearance::icon(const QString &name, const QColor &color) {
 }
 
 QIcon appearance::logo() {
-    static const QIcon result = [] {
-        QIcon image;
-        for (const int size : {16, 24, 32, 48, 64, 128, 256}) {
-            QPixmap pixmap(size, size);
-            pixmap.fill(Qt::transparent);
-            QPainter painter(&pixmap);
-            painter.setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing);
-            painter.scale(size / 64.0, size / 64.0);
-            painter.setPen(QPen(QColor("#87919D"), 1.5));
-            painter.setBrush(QColor("#3A414A"));
-            painter.drawRoundedRect(QRectF(2, 2, 60, 60), 14, 14);
-            QFont font("Segoe UI");
-            font.setPixelSize(30);
-            font.setWeight(QFont::DemiBold);
-            painter.setFont(font);
-            painter.setPen(QColor("#F3F4F6"));
-            painter.drawText(QRectF(2, 0, 60, 64), Qt::AlignCenter, "XL");
-            painter.end();
-            image.addPixmap(pixmap);
-        }
-        return image;
-    }();
+    static const QIcon result(":/assets/xlibrary.ico");
     return result;
 }
 
