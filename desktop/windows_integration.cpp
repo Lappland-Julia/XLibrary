@@ -10,12 +10,42 @@
 #include <QSettings>
 #include <QWidget>
 #include <shlobj.h>
+#include <stdexcept>
 
-#include "src/Backend.h"
+#include "src/RegistryScan.h"
 #include "windows_integration.h"
 
 namespace {
 using unique_handle = std::unique_ptr<void, decltype(&CloseHandle)>;
+
+bool is_system_application(const QString &path) {
+    const auto normalized_path = QDir::cleanPath(QDir::fromNativeSeparators(path));
+    wchar_t windows_directory[32768]{};
+    const auto length = GetWindowsDirectoryW(windows_directory, static_cast<UINT>(std::size(windows_directory)));
+    if (length > 0 && length < std::size(windows_directory)) {
+        const auto prefix = QDir::fromNativeSeparators(QString::fromWCharArray(windows_directory, length)) + '/';
+        if (normalized_path.startsWith(prefix, Qt::CaseInsensitive))
+            return true;
+    }
+
+    // WindowsApps содержит и сторонние приложения: учитываем только пакеты Microsoft и псевдоним winget.
+    for (const auto *folder : {&FOLDERID_ProgramFiles, &FOLDERID_ProgramFilesX64, &FOLDERID_LocalAppData}) {
+        PWSTR raw_path = nullptr;
+        if (FAILED(SHGetKnownFolderPath(*folder, 0, nullptr, &raw_path)))
+            continue;
+        const auto root = QDir::fromNativeSeparators(QString::fromWCharArray(raw_path));
+        CoTaskMemFree(raw_path);
+        const bool local = IsEqualGUID(*folder, FOLDERID_LocalAppData);
+        const auto prefix = root + (local ? "/Microsoft/WindowsApps/" : "/WindowsApps/");
+        if (!normalized_path.startsWith(prefix, Qt::CaseInsensitive))
+            continue;
+        const auto relative_path = normalized_path.mid(prefix.size());
+        if (relative_path.startsWith("Microsoft.", Qt::CaseInsensitive) ||
+            (local && relative_path.compare("winget.exe", Qt::CaseInsensitive) == 0))
+            return true;
+    }
+    return false;
+}
 
 QString process_path(DWORD process_id) {
     const unique_handle process(OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id), &CloseHandle);
@@ -166,6 +196,10 @@ app_record desktop_windows::resolve_application(const QString &path) {
         if (FAILED(link->GetWorkingDirectory(buffer, static_cast<int>(std::size(buffer)))))
             throw std::runtime_error("Не удалось прочитать рабочую папку ярлыка.");
         result.working_directory = QString::fromWCharArray(buffer);
+        // Непригодный ярлык пропускается при поиске до общей транзакции импорта.
+        if (!result.working_directory.isEmpty() && !QFileInfo(result.working_directory).isAbsolute()) {
+            throw std::invalid_argument("Рабочая папка должна быть абсолютным путём.");
+        }
     }
     const Application application(std::filesystem::path(result.path.toStdWString()));
     result.name = QFileInfo(path).suffix().compare("lnk", Qt::CaseInsensitive) == 0
@@ -187,6 +221,8 @@ QVector<app_record> desktop_windows::discover(bool registry, bool start_menu, QS
             app_record record;
             record.name = QString::fromUtf8(application.get_file_title());
             record.path = QDir::fromNativeSeparators(QString::fromStdWString(application.get_file_path().wstring()));
+            if (is_system_application(record.path) && application_icon(record.path).isNull())
+                continue;
             result.append(std::move(record));
         }
         if (!registry_issues.empty()) {
@@ -212,6 +248,8 @@ QVector<app_record> desktop_windows::discover(bool registry, bool start_menu, QS
                 try {
                     const auto record = resolve_application(path);
                     if (record.available && QFileInfo(record.path).suffix().compare("exe", Qt::CaseInsensitive) == 0) {
+                        if (is_system_application(record.path) && application_icon(record.path).isNull())
+                            continue;
                         result.append(record);
                     }
                 } catch (const std::exception &) {
