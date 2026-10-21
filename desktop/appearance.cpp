@@ -77,6 +77,10 @@ QIcon appearance::icon(const QString &name, const QColor &color) {
         painter.drawPolyline(QPolygonF{QPointF(6, 6), QPointF(7, 21), QPointF(17, 21), QPointF(18, 6)});
         painter.drawLine(QPointF(10, 10), QPointF(10, 17));
         painter.drawLine(QPointF(14, 10), QPointF(14, 17));
+    } else if (name == "info") {
+        painter.drawEllipse(QRectF(3, 3, 18, 18));
+        painter.drawPoint(QPointF(12, 8));
+        painter.drawLine(QPointF(12, 11), QPointF(12, 16));
     } else if (name == "x") {
         painter.drawLine(QPointF(6, 5), QPointF(18, 19));
         painter.drawLine(QPointF(18, 5), QPointF(6, 19));
@@ -198,6 +202,11 @@ void appearance::apply(QSettings &settings, const QString &additional_style) {
         QCheckBox::indicator { width: 18px; height: 18px; }
         QToolTip { background: %3; color: %1; border: 1px solid %6; padding: 6px; }
         QStatusBar { background: %2; color: %4; }
+        QFrame#notification { background: %5; border: 1px solid %16; border-radius: 12px; }
+        QToolButton#notification_dismiss { background: transparent; border: 1px solid transparent; border-radius: 7px; padding: 0; min-height: 0; }
+        QToolButton#notification_dismiss:hover { background: %7; border-color: %6; }
+        QToolButton#notification_dismiss:pressed { background: %3; }
+        QToolButton#notification_dismiss:focus { border-color: #AAB4C1; }
         QFrame#discovery_panel { background: %3; border: 1px solid %6; border-radius: 12px; }
         QLabel#discovery_percentage { color: %1; font-weight: 600; }
         QProgressBar#discovery_bar { background: %5; border: none; border-radius: 4px; }
