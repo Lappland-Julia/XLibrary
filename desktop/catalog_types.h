@@ -1,0 +1,49 @@
+#ifndef XLIBRARY_CATALOG_TYPES_H
+#define XLIBRARY_CATALOG_TYPES_H
+
+#include <QMetaType>
+#include <QRegularExpression>
+#include <QStringList>
+#include <QVector>
+
+inline bool valid_tag_name(const QString &tag) {
+    return !tag.isEmpty() && tag.size() <= 64 && !tag.contains(QChar::Null) &&
+           !tag.contains(QRegularExpression("[\\s,#]"));
+}
+
+struct app_record {
+    qint64 id = 0;
+    QString name;
+    QString path;
+    QString arguments;
+    QString working_directory;
+    QStringList tags;
+    bool favorite = false;
+    bool available = true;
+    bool running = false;
+    qint64 last_launch = 0;
+};
+
+struct scenario_step {
+    qint64 application_id = 0;
+    int delay_ms = 0;
+    bool enabled = true;
+};
+
+struct scenario_record {
+    qint64 id = 0;
+    QString name;
+    QVector<scenario_step> steps;
+};
+
+struct catalog_snapshot {
+    QVector<app_record> applications;
+    QStringList tags;
+    QVector<scenario_record> scenarios;
+};
+
+Q_DECLARE_METATYPE(app_record)
+Q_DECLARE_METATYPE(scenario_record)
+Q_DECLARE_METATYPE(catalog_snapshot)
+
+#endif
