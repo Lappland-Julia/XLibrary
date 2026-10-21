@@ -1,0 +1,364 @@
+#include <windows.h>
+#include <shellapi.h>
+#include <tlhelp32.h>
+
+#include <dwmapi.h>
+#include <memory>
+#include <QApplication>
+#include <QDirIterator>
+#include <QFileInfo>
+#include <QSettings>
+#include <QWidget>
+#include <shlobj.h>
+#include <stdexcept>
+
+#include "src/RegistryScan.h"
+#include "windows_integration.h"
+
+namespace {
+using unique_handle = std::unique_ptr<void, decltype(&CloseHandle)>;
+
+bool is_system_application(const QString &path) {
+    const auto normalized_path = QDir::cleanPath(QDir::fromNativeSeparators(path));
+    wchar_t windows_directory[32768]{};
+    const auto length = GetWindowsDirectoryW(windows_directory, static_cast<UINT>(std::size(windows_directory)));
+    if (length > 0 && length < std::size(windows_directory)) {
+        const auto prefix = QDir::fromNativeSeparators(QString::fromWCharArray(windows_directory, length)) + '/';
+        if (normalized_path.startsWith(prefix, Qt::CaseInsensitive))
+            return true;
+    }
+
+    // WindowsApps содержит и сторонние приложения: учитываем только пакеты Microsoft и псевдоним winget.
+    for (const auto *folder : {&FOLDERID_ProgramFiles, &FOLDERID_ProgramFilesX64, &FOLDERID_LocalAppData}) {
+        PWSTR raw_path = nullptr;
+        if (FAILED(SHGetKnownFolderPath(*folder, 0, nullptr, &raw_path)))
+            continue;
+        const auto root = QDir::fromNativeSeparators(QString::fromWCharArray(raw_path));
+        CoTaskMemFree(raw_path);
+        const bool local = IsEqualGUID(*folder, FOLDERID_LocalAppData);
+        const auto prefix = root + (local ? "/Microsoft/WindowsApps/" : "/WindowsApps/");
+        if (!normalized_path.startsWith(prefix, Qt::CaseInsensitive))
+            continue;
+        const auto relative_path = normalized_path.mid(prefix.size());
+        if (relative_path.startsWith("Microsoft.", Qt::CaseInsensitive) ||
+            (local && relative_path.compare("winget.exe", Qt::CaseInsensitive) == 0))
+            return true;
+    }
+    return false;
+}
+
+QString process_path(DWORD process_id) {
+    const unique_handle process(OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id), &CloseHandle);
+    if (!process) {
+        return {};
+    }
+    wchar_t path[32768]{};
+    DWORD length = static_cast<DWORD>(std::size(path));
+    return QueryFullProcessImageNameW(process.get(), 0, path, &length) ? QString::fromWCharArray(path, length)
+                                                                       : QString{};
+}
+
+struct window_search {
+    QString path;
+    HWND window = nullptr;
+};
+
+BOOL CALLBACK find_window(HWND window, LPARAM parameter) {
+    if (!IsWindowVisible(window) || GetWindow(window, GW_OWNER) || GetWindowTextLengthW(window) == 0) {
+        return TRUE;
+    }
+    DWORD process_id = 0;
+    GetWindowThreadProcessId(window, &process_id);
+    auto &search = *reinterpret_cast<window_search *>(parameter);
+    if (process_path(process_id).compare(search.path, Qt::CaseInsensitive) == 0) {
+        search.window = window;
+        return FALSE;
+    }
+    return TRUE;
+}
+
+class ComScope {
+    HRESULT result = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+
+public:
+    ~ComScope() {
+        if (SUCCEEDED(result)) {
+            CoUninitialize();
+        }
+    }
+};
+}
+
+QSet<QString> desktop_windows::running_paths(const QVector<app_record> &applications) {
+    QSet<QString> names;
+    QSet<QString> paths;
+    for (const auto &application : applications) {
+        names.insert(QFileInfo(application.path).fileName().toCaseFolded());
+    }
+    if (names.isEmpty()) {
+        return paths;
+    }
+    const auto raw_snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (raw_snapshot == INVALID_HANDLE_VALUE) {
+        throw std::runtime_error("Не удалось получить список процессов Windows.");
+    }
+    const unique_handle snapshot(raw_snapshot, &CloseHandle);
+    PROCESSENTRY32W entry{};
+    entry.dwSize = sizeof(entry);
+    if (Process32FirstW(snapshot.get(), &entry)) {
+        do {
+            if (names.contains(QString::fromWCharArray(entry.szExeFile).toCaseFolded())) {
+                const auto path = process_path(entry.th32ProcessID);
+                if (!path.isEmpty()) {
+                    paths.insert(QDir::fromNativeSeparators(path).toCaseFolded());
+                }
+            }
+        } while (Process32NextW(snapshot.get(), &entry));
+    }
+    return paths;
+}
+
+bool desktop_windows::activate_window(const QString &path) {
+    window_search search{QDir::toNativeSeparators(path), nullptr};
+    EnumWindows(find_window, reinterpret_cast<LPARAM>(&search));
+    if (!search.window) {
+        return false;
+    }
+    if (IsIconic(search.window)) {
+        ShowWindowAsync(search.window, SW_RESTORE);
+    }
+    if (!SetForegroundWindow(search.window)) {
+        throw std::runtime_error("Windows не разрешила переключить окно. Выберите приложение на панели задач.");
+    }
+    return true;
+}
+
+void desktop_windows::launch_application(const app_record &record) {
+    const ComScope com;
+    Application application(record.name.toStdString(), std::filesystem::path(record.path.toStdWString()));
+    const auto directory =
+        record.working_directory.isEmpty() ? QFileInfo(record.path).absolutePath() : record.working_directory;
+    application.launch(record.arguments.toStdWString(), std::filesystem::path(directory.toStdWString()));
+}
+
+void desktop_windows::open_folder(const QString &path) {
+    const ComScope com;
+    const auto directory = QDir::toNativeSeparators(QFileInfo(path).absolutePath()).toStdWString();
+    const auto result = reinterpret_cast<INT_PTR>(
+        ShellExecuteW(nullptr, L"explore", directory.c_str(), nullptr, nullptr, SW_SHOWNORMAL));
+    if (result <= 32)
+        throw std::runtime_error("Не удалось открыть папку приложения.");
+}
+
+QImage desktop_windows::application_icon(const QString &path) {
+    HICON large = nullptr;
+    const auto native_path = QDir::toNativeSeparators(path).toStdWString();
+    ExtractIconExW(native_path.c_str(), 0, &large, nullptr, 1);
+    if (!large) {
+        return {};
+    }
+    const auto result = QImage::fromHICON(large);
+    DestroyIcon(large);
+    return result;
+}
+
+app_record desktop_windows::resolve_application(const QString &path) {
+    const ComScope com;
+    app_record result;
+    result.path = QFileInfo(path).absoluteFilePath();
+    if (QFileInfo(path).suffix().compare("lnk", Qt::CaseInsensitive) == 0) {
+        IShellLinkW *raw_link = nullptr;
+        if (FAILED(CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLinkW,
+                                    reinterpret_cast<void **>(&raw_link)))) {
+            throw std::runtime_error("Не удалось прочитать ярлык.");
+        }
+        const auto release_link = [](IShellLinkW *value) { value->Release(); };
+        const std::unique_ptr<IShellLinkW, decltype(release_link)> link(raw_link, release_link);
+        IPersistFile *raw_file = nullptr;
+        if (FAILED(link->QueryInterface(IID_IPersistFile, reinterpret_cast<void **>(&raw_file)))) {
+            throw std::runtime_error("Не удалось открыть ярлык.");
+        }
+        const auto release_file = [](IPersistFile *value) { value->Release(); };
+        const std::unique_ptr<IPersistFile, decltype(release_file)> file(raw_file, release_file);
+        if (FAILED(file->Load(path.toStdWString().c_str(), STGM_READ))) {
+            throw std::runtime_error("Не удалось загрузить ярлык.");
+        }
+        wchar_t buffer[32768]{};
+        if (FAILED(link->GetPath(buffer, static_cast<int>(std::size(buffer)), nullptr, 0)) || buffer[0] == L'\0') {
+            throw std::runtime_error("Ярлык не содержит путь к обычному приложению.");
+        }
+        result.path = QString::fromWCharArray(buffer);
+        buffer[0] = L'\0';
+        if (FAILED(link->GetArguments(buffer, static_cast<int>(std::size(buffer)))))
+            throw std::runtime_error("Не удалось прочитать аргументы ярлыка.");
+        result.arguments = QString::fromWCharArray(buffer);
+        buffer[0] = L'\0';
+        if (FAILED(link->GetWorkingDirectory(buffer, static_cast<int>(std::size(buffer)))))
+            throw std::runtime_error("Не удалось прочитать рабочую папку ярлыка.");
+        result.working_directory = QString::fromWCharArray(buffer);
+        // Непригодный ярлык пропускается при поиске до общей транзакции импорта.
+        if (!result.working_directory.isEmpty() && !QFileInfo(result.working_directory).isAbsolute()) {
+            throw std::invalid_argument("Рабочая папка должна быть абсолютным путём.");
+        }
+    }
+    const Application application(std::filesystem::path(result.path.toStdWString()));
+    result.name = QFileInfo(path).suffix().compare("lnk", Qt::CaseInsensitive) == 0
+                      ? QFileInfo(path).completeBaseName()
+                      : QString::fromUtf8(application.get_file_title());
+    result.path = QDir::fromNativeSeparators(result.path);
+    result.available = QFileInfo(result.path).isFile();
+    return result;
+}
+
+QVector<app_record> desktop_windows::discover(bool registry, bool start_menu, QStringList &issues,
+                                              const std::atomic_bool &cancelled) {
+    QVector<app_record> result;
+    if (registry) {
+        std::vector<xlibrary::scan_issue> registry_issues;
+        for (const auto &application : xlibrary::scan_registry_applications(&registry_issues)) {
+            if (cancelled.load())
+                return {};
+            app_record record;
+            record.name = QString::fromUtf8(application.get_file_title());
+            record.path = QDir::fromNativeSeparators(QString::fromStdWString(application.get_file_path().wstring()));
+            if (is_system_application(record.path) && application_icon(record.path).isNull())
+                continue;
+            result.append(std::move(record));
+        }
+        if (!registry_issues.empty()) {
+            issues.append(QString("Недоступно разделов реестра: %1").arg(registry_issues.size()));
+        }
+    }
+    if (start_menu) {
+        for (const auto *folder : {&FOLDERID_Programs, &FOLDERID_CommonPrograms}) {
+            if (cancelled.load())
+                return {};
+            PWSTR raw_path = nullptr;
+            if (FAILED(SHGetKnownFolderPath(*folder, 0, nullptr, &raw_path))) {
+                issues.append("Недоступна папка меню «Пуск».");
+                continue;
+            }
+            const QString directory = QString::fromWCharArray(raw_path);
+            CoTaskMemFree(raw_path);
+            QDirIterator files(directory, {"*.lnk"}, QDir::Files, QDirIterator::Subdirectories);
+            while (files.hasNext()) {
+                if (cancelled.load())
+                    return {};
+                const auto path = files.next();
+                try {
+                    const auto record = resolve_application(path);
+                    if (record.available && QFileInfo(record.path).suffix().compare("exe", Qt::CaseInsensitive) == 0) {
+                        if (is_system_application(record.path) && application_icon(record.path).isNull())
+                            continue;
+                        result.append(record);
+                    }
+                } catch (const std::exception &) {
+                    issues.append(QFileInfo(path).fileName());
+                }
+            }
+        }
+    }
+    return result;
+}
+
+bool desktop_windows::set_autostart(bool enabled, QString &error) {
+    QSettings startup("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", QSettings::NativeFormat);
+    if (enabled) {
+        startup.setValue("XLibrary",
+                         '"' + QDir::toNativeSeparators(QApplication::applicationFilePath()) + "\" --background");
+    } else {
+        startup.remove("XLibrary");
+    }
+    startup.sync();
+    if (startup.status() != QSettings::NoError) {
+        error = "Не удалось изменить автозапуск в реестре Windows.";
+        return false;
+    }
+    return true;
+}
+
+void desktop_windows::apply_backdrop(QWidget *window, bool dark, bool glass) {
+    const auto handle = reinterpret_cast<HWND>(window->winId());
+    const BOOL dark_value = dark;
+    DwmSetWindowAttribute(handle, 20, &dark_value, sizeof(dark_value));
+    const int backdrop = glass ? 2 : 1;
+    DwmSetWindowAttribute(handle, 38, &backdrop, sizeof(backdrop));
+}
+
+GlobalHotkey::GlobalHotkey(QObject *parent) : QObject(parent) {
+    qApp->installNativeEventFilter(this);
+}
+
+GlobalHotkey::~GlobalHotkey() {
+    if (current_id) {
+        UnregisterHotKey(nullptr, current_id);
+    }
+}
+
+bool GlobalHotkey::set_sequence(const QKeySequence &value, QString &error) {
+    if (sequence == value) {
+        return true;
+    }
+    if (value.isEmpty()) {
+        if (current_id) {
+            UnregisterHotKey(nullptr, current_id);
+        }
+        current_id = 0;
+        sequence = value;
+        return true;
+    }
+    if (value.count() != 1) {
+        error = "Используйте одно сочетание клавиш.";
+        return false;
+    }
+    const auto combination = value[0];
+    const auto key = combination.key();
+    UINT virtual_key = 0;
+    if (key >= Qt::Key_A && key <= Qt::Key_Z) {
+        virtual_key = static_cast<UINT>(key);
+    } else if (key >= Qt::Key_0 && key <= Qt::Key_9) {
+        virtual_key = static_cast<UINT>(key);
+    } else if (key >= Qt::Key_F1 && key <= Qt::Key_F24) {
+        virtual_key = VK_F1 + key - Qt::Key_F1;
+    } else if (key == Qt::Key_Space) {
+        virtual_key = VK_SPACE;
+    } else {
+        error = "Используйте букву, цифру, F1–F24 или пробел.";
+        return false;
+    }
+    const auto modifiers = combination.keyboardModifiers();
+    if (!(modifiers & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier))) {
+        error = "Добавьте Ctrl, Alt или Win к глобальному сочетанию.";
+        return false;
+    }
+    UINT flags = MOD_NOREPEAT;
+    if (modifiers & Qt::ControlModifier)
+        flags |= MOD_CONTROL;
+    if (modifiers & Qt::AltModifier)
+        flags |= MOD_ALT;
+    if (modifiers & Qt::ShiftModifier)
+        flags |= MOD_SHIFT;
+    if (modifiers & Qt::MetaModifier)
+        flags |= MOD_WIN;
+    const auto new_id = next_id++;
+    if (!RegisterHotKey(nullptr, new_id, flags, virtual_key)) {
+        error = "Сочетание занято Windows или другим приложением.";
+        return false;
+    }
+    if (current_id) {
+        UnregisterHotKey(nullptr, current_id);
+    }
+    current_id = new_id;
+    sequence = value;
+    return true;
+}
+
+bool GlobalHotkey::nativeEventFilter(const QByteArray &, void *message, qintptr *result) {
+    const auto *event = static_cast<MSG *>(message);
+    if (event->message == WM_HOTKEY && event->wParam == static_cast<WPARAM>(current_id) && current_id) {
+        *result = 0;
+        emit activated();
+        return true;
+    }
+    return false;
+}

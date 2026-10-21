@@ -28,6 +28,7 @@ public:
     void set_executable(std::filesystem::path const &file_path);
     // Возвращает 0, если Shell открыл приложение, но PID нового процесса недоступен.
     std::uint32_t launch();
+    std::uint32_t launch(const std::wstring &arguments, const std::filesystem::path &working_directory);
 
     Application();
     explicit Application(const std::string &file_title, const std::filesystem::path &executable_path);

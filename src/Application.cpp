@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstring>
 #include <cwchar>
+#include <cwctype>
 #include <iomanip>
 #include <iterator>
 #include <memory>
@@ -103,17 +104,21 @@ std::string Application::read_application_name(const std::filesystem::path &exec
 }
 
 std::uint32_t Application::launch() {
+    return this->launch({}, this->file_path.parent_path());
+}
+
+std::uint32_t Application::launch(const std::wstring &arguments, const std::filesystem::path &working_directory) {
     const std::filesystem::path executable_path = this->get_file_path();
     if (executable_path.empty()) {
         throw std::invalid_argument("Application executable path is empty");
     }
-    const auto working_directory = executable_path.parent_path();
 
     SHELLEXECUTEINFOW launch_info{};
     launch_info.cbSize = sizeof(launch_info);
     launch_info.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI;
     launch_info.lpVerb = L"open";
     launch_info.lpFile = executable_path.c_str();
+    launch_info.lpParameters = arguments.empty() ? nullptr : arguments.c_str();
     launch_info.lpDirectory = working_directory.c_str();
     launch_info.nShow = SW_SHOWNORMAL;
 

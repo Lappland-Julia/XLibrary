@@ -1,0 +1,41 @@
+#ifndef XLIBRARY_MAIN_WINDOW_H
+#define XLIBRARY_MAIN_WINDOW_H
+
+#include <memory>
+#include <QMainWindow>
+#include <QPluginLoader>
+#include <QSystemTrayIcon>
+#include <vector>
+
+#include "desktop_service.h"
+#include "ui_registry.h"
+#include "windows_integration.h"
+
+class MainWindow : public QMainWindow {
+    Q_OBJECT
+private:
+    DesktopService &service;
+    UiRegistry registry;
+    ui_context context;
+    GlobalHotkey hotkey;
+    QSystemTrayIcon tray;
+    std::vector<std::unique_ptr<QPluginLoader>> plugins;
+    bool quitting = false;
+    void create_actions();
+    void refresh_actions();
+    void apply_settings();
+    void load_plugins();
+    void update_layout();
+
+protected:
+    void closeEvent(QCloseEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
+
+public:
+    explicit MainWindow(DesktopService &service);
+    ~MainWindow() override;
+    void show_library();
+    void start();
+};
+
+#endif
