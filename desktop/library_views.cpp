@@ -203,6 +203,7 @@ QWidget *navigation(const ui_context &context, QWidget *parent) {
                                    {"scenarios", "Сценарии", "scenarios"}};
     for (const auto &link : links) {
         auto *item = button(link[1], "quiet");
+        item->setProperty("navigation", true);
         item->setIcon(appearance::icon(link[2]));
         item->setCheckable(true);
         item->setProperty("navigation_section", link[0]);

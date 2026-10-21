@@ -180,6 +180,8 @@ QDialog *settings_dialog(const ui_context &context, QWidget *parent) {
     root->addWidget(label("Настройки", "heading"));
     auto *body = new QHBoxLayout;
     auto *categories = new QListWidget;
+    categories->setObjectName("settings_categories");
+    categories->setSpacing(2);
     categories->setFixedWidth(180);
     auto *pages = new QStackedWidget;
     const QList<QPair<QString, QString>> sections{

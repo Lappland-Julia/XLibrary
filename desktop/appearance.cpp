@@ -152,6 +152,10 @@ void appearance::apply(QSettings &settings, const QString &additional_style) {
         QPushButton[danger="true"]:hover { border-color: %15; }
         QPushButton[quiet="true"] { background: transparent; border-color: transparent; text-align: left; }
         QPushButton[quiet="true"]:hover, QPushButton[quiet="true"]:checked { background: %7; }
+        QPushButton[navigation="true"] { background: transparent; border: 1px solid transparent; border-radius: 10px; padding: 9px 12px; text-align: left; }
+        QPushButton[navigation="true"]:hover { background: %5; border-color: %6; }
+        QPushButton[navigation="true"]:checked { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 %17, stop:1 %7); border-color: %16; font-weight: 600; }
+        QPushButton[navigation="true"]:focus { border-color: #AAB4C1; }
         QLineEdit, QComboBox, QSpinBox, QKeySequenceEdit { background: %5; border: 1px solid %6; border-radius: 8px; padding: 8px 10px; min-height: %10px; selection-background-color: #68717C; }
         QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QKeySequenceEdit:focus, QPushButton:focus, QToolButton:focus { border: 1px solid #AAB4C1; }
         QLineEdit[invalid="true"] { border-color: #C88888; }
@@ -160,6 +164,11 @@ void appearance::apply(QSettings &settings, const QString &additional_style) {
         QAbstractItemView { background: %2; border: none; outline: none; selection-background-color: %7; }
         QAbstractItemView::item { padding: 6px; }
         QAbstractItemView::item:selected { background: %7; }
+        QListWidget#settings_categories { background: transparent; }
+        QListWidget#settings_categories::item { margin: 3px 0; padding: 8px 12px; border: 1px solid transparent; border-radius: 10px; }
+        QListWidget#settings_categories::item:hover { background: %5; border-color: %6; }
+        QListWidget#settings_categories::item:selected { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 %17, stop:1 %7); border-color: %16; color: %1; font-weight: 600; }
+        QListWidget#settings_categories::item:selected:focus { border-color: #AAB4C1; }
         QTreeView#application_list::item { padding: 0; background: transparent; }
         QTreeView#application_list::item:selected, QTreeView#application_list::item:hover { background: transparent; }
         QHeaderView::section { background: %2; color: %4; border: none; border-bottom: 1px solid %6; padding: 8px 12px; text-align: left; }
@@ -189,6 +198,7 @@ void appearance::apply(QSettings &settings, const QString &additional_style) {
                       selection.name(), QString::number(scaled(settings, 24)), QString::number(scaled(settings, 16)),
                       QString::number(scaled(settings, 20)), QString::number(scaled(settings, 14)),
                       QString::number(scaled(settings, 20)), QString::number(scaled(settings, 18)),
-                      QString::number(scaled(settings, 12)), dark ? "#C88888" : "#A34040");
+                      QString::number(scaled(settings, 12)), dark ? "#C88888" : "#A34040",
+                      dark ? "#59616C" : "#A7B1BF", dark ? "#434850" : "#E4E8ED");
     qApp->setStyleSheet(style + additional_style);
 }
