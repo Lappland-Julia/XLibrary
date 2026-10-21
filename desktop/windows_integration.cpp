@@ -28,23 +28,58 @@ bool is_system_application(const QString &path) {
             return true;
     }
 
-    // WindowsApps содержит и сторонние приложения: учитываем только пакеты Microsoft и псевдоним winget.
-    for (const auto *folder : {&FOLDERID_ProgramFiles, &FOLDERID_ProgramFilesX64, &FOLDERID_LocalAppData}) {
+    // В WindowsApps есть обычные приложения Microsoft: издатель сам по себе не означает компонент ОС.
+    for (const auto *folder :
+         {&FOLDERID_ProgramFiles, &FOLDERID_ProgramFilesX86, &FOLDERID_ProgramFilesX64, &FOLDERID_LocalAppData}) {
         PWSTR raw_path = nullptr;
         if (FAILED(SHGetKnownFolderPath(*folder, 0, nullptr, &raw_path)))
             continue;
         const auto root = QDir::fromNativeSeparators(QString::fromWCharArray(raw_path));
         CoTaskMemFree(raw_path);
         const bool local = IsEqualGUID(*folder, FOLDERID_LocalAppData);
+        if (!local) {
+            // Компоненты Windows находятся также вне каталога самой ОС.
+            for (const auto *directory : {"Internet Explorer/", "Windows Mail/", "Windows Media Player/",
+                                          "Windows Photo Viewer/", "Windows Defender/", "Windows NT/", "WSL/"}) {
+                if (normalized_path.startsWith(root + '/' + directory, Qt::CaseInsensitive))
+                    return true;
+            }
+        }
         const auto prefix = root + (local ? "/Microsoft/WindowsApps/" : "/WindowsApps/");
         if (!normalized_path.startsWith(prefix, Qt::CaseInsensitive))
             continue;
         const auto relative_path = normalized_path.mid(prefix.size());
-        if (relative_path.startsWith("Microsoft.", Qt::CaseInsensitive) ||
+        if (relative_path.startsWith("Microsoft.Windows", Qt::CaseInsensitive) ||
+            relative_path.startsWith("MicrosoftWindows.", Qt::CaseInsensitive) ||
+            relative_path.startsWith("Microsoft.DesktopAppInstaller_", Qt::CaseInsensitive) ||
+            relative_path.startsWith("MicrosoftCorporationII.WindowsSubsystemForLinux_", Qt::CaseInsensitive) ||
             (local && relative_path.compare("winget.exe", Qt::CaseInsensitive) == 0))
             return true;
     }
+    for (const auto *folder :
+         {&FOLDERID_ProgramFilesCommon, &FOLDERID_ProgramFilesCommonX86, &FOLDERID_ProgramFilesCommonX64}) {
+        PWSTR raw_path = nullptr;
+        if (FAILED(SHGetKnownFolderPath(*folder, 0, nullptr, &raw_path)))
+            continue;
+        const auto prefix = QDir::fromNativeSeparators(QString::fromWCharArray(raw_path)) + "/microsoft shared/ink/";
+        CoTaskMemFree(raw_path);
+        if (normalized_path.startsWith(prefix, Qt::CaseInsensitive))
+            return true;
+    }
     return false;
+}
+
+bool should_import_application(const app_record &record) {
+    if (is_system_application(record.path))
+        return false;
+    // Имя ярлыка может быть локализовано, а удаление может запускать основной EXE с аргументом.
+    static const QRegularExpression uninstaller_name("^(?:uninstall|uninst|unins[0-9]*)\\.exe$",
+                                                     QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression uninstall_argument(
+        "(?:^|\\s)(?:--start-uninstaller|[-/]uninstall(?:remove)?|[-/]removeonly)(?=\\s|$)",
+        QRegularExpression::CaseInsensitiveOption);
+    return !uninstaller_name.match(QFileInfo(record.path).fileName()).hasMatch() &&
+           !uninstall_argument.match(record.arguments).hasMatch();
 }
 
 QString process_path(DWORD process_id) {
@@ -221,7 +256,7 @@ QVector<app_record> desktop_windows::discover(bool registry, bool start_menu, QS
             app_record record;
             record.name = QString::fromUtf8(application.get_file_title());
             record.path = QDir::fromNativeSeparators(QString::fromStdWString(application.get_file_path().wstring()));
-            if (is_system_application(record.path) && application_icon(record.path).isNull())
+            if (!should_import_application(record))
                 continue;
             result.append(std::move(record));
         }
@@ -248,7 +283,7 @@ QVector<app_record> desktop_windows::discover(bool registry, bool start_menu, QS
                 try {
                     const auto record = resolve_application(path);
                     if (record.available && QFileInfo(record.path).suffix().compare("exe", Qt::CaseInsensitive) == 0) {
-                        if (is_system_application(record.path) && application_icon(record.path).isNull())
+                        if (!should_import_application(record))
                             continue;
                         result.append(record);
                     }

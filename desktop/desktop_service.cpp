@@ -346,10 +346,7 @@ void DesktopService::discover() {
                 const auto count = worker.store->import_records(applications, cancelled.get());
                 worker.refresh();
                 emit worker.notification(
-                    QString("Добавлено приложений: %1.%2")
-                        .arg(count)
-                        .arg(issues.isEmpty() ? QString{}
-                                              : QString(" Пропущено недоступных записей: %1.").arg(issues.size())));
+                    QString("Добавлено приложений: %1").arg(count));
             });
         } catch (const std::exception &error) {
             notify(QString::fromUtf8(error.what()));
