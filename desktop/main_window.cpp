@@ -35,7 +35,7 @@ QWidget *shell(const ui_context &context, QWidget *parent) {
     pages->addWidget(context.registry->create("library", context, pages));
     pages->addWidget(context.registry->create("scenarios", context, pages));
     auto *transition = new PageTransition(pages);
-    body->addWidget(pages, 1);
+    body->addWidget(transition, 1);
     auto *notice = new QWidget;
     notice->setProperty("panel", true);
     auto *notice_layout = new QHBoxLayout(notice);

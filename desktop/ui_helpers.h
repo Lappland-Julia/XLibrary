@@ -3,44 +3,83 @@
 
 #include <QDialog>
 #include <QFrame>
-#include <QGraphicsOpacityEffect>
 #include <QLabel>
-#include <QPropertyAnimation>
+#include <QPainter>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QVariantAnimation>
 #include <QVBoxLayout>
 
 #include "ui_registry.h"
 #include "windows_integration.h"
 
 namespace ui_helpers {
-class PageTransition : public QObject {
+class TransitionOverlay : public QWidget {
+public:
+    QPixmap snapshot;
+    qreal opacity = 1.0;
+
+    explicit TransitionOverlay(QWidget *parent) : QWidget(parent) {
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        hide();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter painter(this);
+        // Непрозрачный фон сохраняет тон поверхности во время перехода.
+        painter.fillRect(rect(), palette().window());
+        painter.setOpacity(opacity);
+        painter.drawPixmap(rect(), snapshot);
+    }
+};
+
+class PageTransition : public QWidget {
 private:
     QWidget *contents;
-    QGraphicsOpacityEffect *opacity;
-    QPropertyAnimation *animation;
+    TransitionOverlay *overlay;
+    QVariantAnimation *animation;
+
+protected:
+    void resizeEvent(QResizeEvent *event) override {
+        animation->stop();
+        overlay->hide();
+        overlay->snapshot = QPixmap{};
+        QWidget::resizeEvent(event);
+    }
 
 public:
     explicit PageTransition(QWidget *contents)
-        : QObject(contents), contents(contents), opacity(new QGraphicsOpacityEffect(contents)),
-          animation(new QPropertyAnimation(opacity, "opacity", this)) {
-        contents->setGraphicsEffect(opacity);
-        opacity->setEnabled(false);
+        : contents(contents), overlay(new TransitionOverlay(this)), animation(new QVariantAnimation(this)) {
+        setAutoFillBackground(true);
+        auto *layout = new QVBoxLayout(this);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->addWidget(contents);
         animation->setDuration(150);
+        animation->setStartValue(0.45);
         animation->setEndValue(1.0);
         animation->setEasingCurve(QEasingCurve::OutCubic);
-        connect(animation, &QPropertyAnimation::finished, this, [this] { opacity->setEnabled(false); });
+        connect(animation, &QVariantAnimation::valueChanged, this, [this](const QVariant &value) {
+            overlay->opacity = value.toReal();
+            overlay->update();
+        });
+        connect(animation, &QVariantAnimation::finished, this, [this] {
+            overlay->hide();
+            overlay->snapshot = QPixmap{};
+        });
     }
 
     void start() {
-        const auto from = animation->state() == QAbstractAnimation::Running ? qMax(0.55, opacity->opacity()) : 0.45;
         animation->stop();
-        opacity->setEnabled(false);
+        overlay->hide();
+        overlay->snapshot = QPixmap{};
         if (!contents->isVisible() || !desktop_windows::animations_enabled())
             return;
-        animation->setStartValue(from);
-        opacity->setOpacity(from);
-        opacity->setEnabled(true);
+        overlay->snapshot = contents->grab();
+        overlay->setGeometry(rect());
+        overlay->opacity = animation->startValue().toReal();
+        overlay->show();
+        overlay->raise();
         animation->start();
     }
 };

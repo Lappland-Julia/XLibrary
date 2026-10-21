@@ -193,10 +193,10 @@ QDialog *settings_dialog(const ui_context &context, QWidget *parent) {
         item->setSizeHint({160, 44});
         pages->addWidget(scroll(context.registry->create(section.second, context, pages)));
     }
-    body->addWidget(categories);
-    body->addWidget(pages, 1);
-    root->addLayout(body, 1);
     auto *transition = new PageTransition(pages);
+    body->addWidget(categories);
+    body->addWidget(transition, 1);
+    root->addLayout(body, 1);
     QObject::connect(categories, &QListWidget::currentRowChanged, pages, [=](int index) {
         if (pages->currentIndex() == index)
             return;
