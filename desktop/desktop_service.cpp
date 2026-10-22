@@ -367,8 +367,8 @@ void DesktopService::discover() {
             auto result = watcher->result();
             scan_progress = {90, 0, result.first.size(), "Добавление приложений в библиотеку"};
             emit discovery_progress_changed();
-            enqueue("discover", [applications = std::move(result.first), cancelled = discovery_cancelled,
-                                 report_progress](CatalogWorker &worker) {
+            enqueue("discover", [applications = std::move(result.first), issues = std::move(result.second),
+                                 cancelled = discovery_cancelled, report_progress](CatalogWorker &worker) {
                 const auto count = worker.store->import_records(
                     applications, cancelled.get(), [&](qsizetype processed, qsizetype total) {
                         report_progress({total > 0 ? 90 + static_cast<int>(9.0 * processed / total) : 99, processed,
@@ -376,7 +376,10 @@ void DesktopService::discover() {
                     });
                 report_progress({99, applications.size(), applications.size(), "Обновление библиотеки"});
                 worker.refresh();
-                emit worker.notification(QString("Добавлено приложений: %1").arg(count));
+                QString message = QString("Добавлено приложений: %1.").arg(count);
+                if (!issues.isEmpty())
+                    message += QString(" Диагностических сообщений: %1.").arg(issues.size());
+                emit worker.notification(message);
             });
         } catch (const std::exception &error) {
             notify(QString::fromUtf8(error.what()));
