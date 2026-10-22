@@ -18,7 +18,10 @@
 
 class CatalogWorker : public QObject {
     Q_OBJECT
+    QString database_path;
+
 public:
+    explicit CatalogWorker(const QString &database_path) : database_path(database_path) {}
     std::unique_ptr<CatalogStore> store;
     catalog_snapshot catalog;
     QTimer *monitor = nullptr;
@@ -27,7 +30,7 @@ public:
 
     void initialize() {
         try {
-            store = std::make_unique<CatalogStore>();
+            store = std::make_unique<CatalogStore>(database_path);
             refresh();
             monitor = new QTimer(this);
             monitor->setInterval(2500);
@@ -71,8 +74,8 @@ signals:
     void notification(const QString &message);
 };
 
-DesktopService::DesktopService(QObject *parent, const QString &profile_path)
-    : QObject(parent), worker(new CatalogWorker), model(this), filter(this),
+DesktopService::DesktopService(QObject *parent, const QString &profile_path, const QString &database_path)
+    : QObject(parent), worker(new CatalogWorker(database_path)), model(this), filter(this),
       settings((profile_path.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)
                                        : profile_path) +
                    "/settings.ini",

@@ -9,12 +9,12 @@
 
 class CatalogStore {
 private:
-    Database database{false};
+    Database database;
     void execute(const char *sql) const;
     void write_metadata(qint64 id, const app_record &record);
 
 public:
-    CatalogStore();
+    explicit CatalogStore(const QString &database_path = {});
     catalog_snapshot read() const;
     qint64 save_application(const app_record &record);
     void remove_application(qint64 id);

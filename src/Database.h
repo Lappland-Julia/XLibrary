@@ -20,6 +20,7 @@ private:
 
 public:
     Database();
+    Database(const std::filesystem::path &path, bool drop_on_add_error);
     explicit Database(const bool drop_on_add_error) : Database() { this->drop_on_add_error = drop_on_add_error; }
     explicit Database(const Database &) = delete;
     Database &operator=(const Database &) = delete;

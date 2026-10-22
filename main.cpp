@@ -1,8 +1,8 @@
-#include <cstdlib>
 #include <memory>
 #include <QApplication>
 #include <QCryptographicHash>
 #include <QDir>
+#include <QFileInfo>
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QLockFile>
@@ -24,17 +24,16 @@ int main(int argc, char *argv[]) {
     application.setQuitOnLastWindowClosed(false);
     application.setStyle("Fusion");
     const bool check_startup = application.arguments().contains("--check-startup");
+    const bool portable = QFileInfo(application.applicationDirPath() + "/portable.flag").isFile();
     std::unique_ptr<QTemporaryDir> startup_profile;
     try {
         if (check_startup) {
             startup_profile = std::make_unique<QTemporaryDir>();
             if (!startup_profile->isValid())
                 throw std::runtime_error("Не удалось создать временный профиль для проверки запуска.");
-            // Database использует LOCALAPPDATA, а настройки Qt получают тот же временный профиль явно.
-            if (_wputenv_s(L"LOCALAPPDATA", startup_profile->path().toStdWString().c_str()) != 0)
-                throw std::runtime_error("Не удалось настроить временный профиль для проверки запуска.");
         }
         const auto profile = check_startup ? startup_profile->path()
+                             : portable    ? application.applicationDirPath() + "/data"
                                            : QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
         if (!QDir().mkpath(profile))
             throw std::runtime_error("Не удалось создать папку настроек XLibrary.");
@@ -60,7 +59,9 @@ int main(int argc, char *argv[]) {
         server.setSocketOptions(QLocalServer::UserAccessOption);
         if (!server.listen(server_name))
             throw std::runtime_error("Не удалось открыть локальный канал XLibrary.");
-        DesktopService service(nullptr, profile);
+        // Portable и проверка запуска используют свой каталог без подмены окружения дочерних приложений.
+        const auto database_path = (portable || check_startup) ? profile + "/xlibrary.db" : QString{};
+        DesktopService service(nullptr, profile, database_path);
         MainWindow window(service);
         if (check_startup) {
             QObject::connect(&service, &DesktopService::catalog_changed, &application, [&] {
