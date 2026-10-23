@@ -10,7 +10,7 @@
 #include <QSet>
 
 #include "catalog_types.h"
-#include "src/Application.h"
+#include "Application.h"
 
 class QWidget;
 

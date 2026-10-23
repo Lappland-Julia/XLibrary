@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(XLibrary VERSION 0.1.0 LANGUAGES C CXX)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION")
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" XLIBRARY_RELEASE_VERSION)
+string(STRIP "${XLIBRARY_RELEASE_VERSION}" XLIBRARY_RELEASE_VERSION)
+if(NOT XLIBRARY_RELEASE_VERSION MATCHES "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$")
+    message(FATAL_ERROR "VERSION must contain a version in major.minor.patch format.")
+endif()
+project(XLibrary VERSION "${XLIBRARY_RELEASE_VERSION}" LANGUAGES C CXX)
 
 # Использовать время распаковки файлов загружаемых архивов.
 if(POLICY CMP0135)
@@ -107,7 +113,7 @@ add_library(xlibrary_core STATIC
 )
 
 target_compile_definitions(xlibrary_core PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN)
-target_include_directories(xlibrary_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_include_directories(xlibrary_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(xlibrary_core PUBLIC
         sqlite3
         Threads::Threads
@@ -127,6 +133,8 @@ qt_add_executable(XLibrary WIN32
         desktop/library_model.h desktop/library_model.cpp
         desktop/desktop_service.h desktop/desktop_service.cpp
         desktop/appearance.h desktop/appearance.cpp
+        desktop/selection_button.h desktop/selection_button.cpp
+        desktop/library_splitter.h desktop/library_splitter.cpp
         desktop/ui_registry.h desktop/ui_helpers.h
         desktop/editors.h desktop/editors.cpp
         desktop/library_views.h desktop/library_views.cpp
@@ -134,6 +142,7 @@ qt_add_executable(XLibrary WIN32
         desktop/main_window.h desktop/main_window.cpp
 )
 set_target_properties(XLibrary PROPERTIES AUTOMOC ON)
+target_include_directories(XLibrary PRIVATE "$<$<COMPILE_LANGUAGE:RC>:${CMAKE_CURRENT_SOURCE_DIR}>")
 set_source_files_properties(assets/application_icon.rc PROPERTIES
         OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/xlibrary.ico"
 )

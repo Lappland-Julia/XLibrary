@@ -2,6 +2,8 @@
 
 Нужны Windows 10/11 x64, Git, CMake 3.21+, компилятор C++23 и **динамический** Qt 6.5+ с Widgets, Concurrent и Network. Для Ninja нужен `ninja.exe` в PATH. При первой конфигурации CMake скачивает SQLite с проверкой хеша.
 
+Версия приложения задаётся только в корневом файле `VERSION` в формате `major.minor.patch`. CMake использует её для приложения, окна «О программе», ресурсов Windows и упаковщика. После изменения `VERSION` следующая сборка автоматически повторяет конфигурацию.
+
 CI использует Qt **6.8.3**, MSVC 2022 x64 и MinGW **13.1.0** из Qt Online Installer. Для MinGW выбирайте комплект Qt `mingw_64` и соответствующий ему MinGW; для MSVC — `msvc2022_64` и Visual Studio 2022 / Build Tools с Desktop development with C++. Не смешивайте ABI или архитектуры. Скрипты упаковки и проверки требуют **PowerShell 7** (`pwsh`), а не Windows PowerShell 5.1. Упаковка использует `tar.exe` из Windows.
 
 ## Debug в CLion

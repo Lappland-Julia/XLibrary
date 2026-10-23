@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "0.1.0"
+  #error AppVersion must be supplied by build_release.ps1 from the configured VERSION
 #endif
 #ifndef PackageDir
   #error PackageDir must point to the deployed application

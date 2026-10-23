@@ -5,7 +5,7 @@
 #include <functional>
 
 #include "catalog_types.h"
-#include "src/Database.h"
+#include "Database.h"
 
 class CatalogStore {
 private:
