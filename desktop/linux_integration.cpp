@@ -36,13 +36,13 @@ constexpr int x11_success = Success;
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
 #include <QDBusMessage>
-#include <QDesktopServices>
 #include <QDirIterator>
 #include <QFileIconProvider>
 #include <QFileInfo>
 #include <QIcon>
 #include <QLocale>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QSaveFile>
 #include <QSocketNotifier>
 #include <QStandardPaths>
@@ -51,9 +51,32 @@ constexpr int x11_success = Success;
 #include <QWidget>
 #include <stdexcept>
 
+#include "application_paths.h"
 #include "platform_integration.h"
 
 namespace {
+QProcessEnvironment application_environment() {
+    auto environment = QProcessEnvironment::systemEnvironment();
+    if (!application_paths::bundled_runtime())
+        return environment;
+    // Bundled Qt нужен только XLibrary: дочерние приложения используют исходное окружение.
+    for (const auto &name :
+         {QString("LD_LIBRARY_PATH"), QString("QT_PLUGIN_PATH"), QString("QT_QPA_PLATFORM_PLUGIN_PATH")}) {
+        const auto original = "XLIBRARY_ORIGINAL_" + name;
+        if (environment.value(original + "_SET") == "x")
+            environment.insert(name, environment.value(original));
+        else
+            environment.remove(name);
+    }
+    for (const auto &name : environment.keys()) {
+        if (name.startsWith("XLIBRARY_"))
+            environment.remove(name);
+    }
+    for (const auto &name : {"APPDIR", "APPIMAGE", "OWD", "ARGV0"})
+        environment.remove(name);
+    return environment;
+}
+
 struct desktop_entry {
     QString path;
     QHash<QString, QString> values;
@@ -894,6 +917,7 @@ void desktop_platform::launch_application(const app_record &record) {
     if (!directory.isEmpty() && (!QFileInfo(directory).isAbsolute() || !QFileInfo(directory).isDir()))
         throw std::runtime_error("Рабочая папка приложения недоступна.");
     QProcess process;
+    process.setProcessEnvironment(application_environment());
     process.setProgram(executable);
     process.setArguments(command);
     if (!directory.isEmpty())
@@ -904,8 +928,23 @@ void desktop_platform::launch_application(const app_record &record) {
 }
 
 void desktop_platform::open_folder(const QString &path) {
-    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath())))
-        throw std::runtime_error("Не удалось открыть папку приложения.");
+    if (!open_url(QUrl::fromLocalFile(QFileInfo(path).absolutePath())))
+        throw std::runtime_error("Не удалось открыть папку приложения. Проверьте доступность xdg-open.");
+}
+
+bool desktop_platform::open_url(const QUrl &url) {
+    const auto executable = executable_path("xdg-open");
+    if (executable.isEmpty())
+        return false;
+    QProcess process;
+    try {
+        process.setProcessEnvironment(application_environment());
+    } catch (const std::exception &) {
+        return false;
+    }
+    process.setProgram(executable);
+    process.setArguments({url.toString(QUrl::FullyEncoded)});
+    return process.startDetached();
 }
 
 QImage desktop_platform::application_icon(const QString &path) {
@@ -1002,6 +1041,17 @@ QVector<app_record> desktop_platform::discover(bool system_applications, bool us
 }
 
 bool desktop_platform::set_autostart(bool enabled, QString &error) {
+    QString executable;
+    if (enabled) {
+        try {
+            executable = application_paths::appimage_file();
+        } catch (const std::exception &failure) {
+            error = QString::fromUtf8(failure.what());
+            return false;
+        }
+        if (executable.isEmpty())
+            executable = QCoreApplication::applicationFilePath();
+    }
     const auto directory = xdg_home("XDG_CONFIG_HOME", "/.config") + "/autostart";
     if (!QDir().mkpath(directory)) {
         error = "Не удалось создать папку автозапуска XDG.";
@@ -1012,8 +1062,7 @@ bool desktop_platform::set_autostart(bool enabled, QString &error) {
         error = "Не удалось открыть файл автозапуска: " + file.errorString();
         return false;
     }
-    const auto content = enabled ? "[Desktop Entry]\nType=Application\nName=XLibrary\nExec=" +
-                                       exec_quote(QCoreApplication::applicationFilePath()) +
+    const auto content = enabled ? "[Desktop Entry]\nType=Application\nName=XLibrary\nExec=" + exec_quote(executable) +
                                        " --background\nTerminal=false\n"
                                  : QString("[Desktop Entry]\nType=Application\nName=XLibrary\nHidden=true\n");
     const auto bytes = content.toUtf8();

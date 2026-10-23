@@ -5,9 +5,11 @@
 #include <dwmapi.h>
 #include <memory>
 #include <QApplication>
+#include <QDesktopServices>
 #include <QDirIterator>
 #include <QFileInfo>
 #include <QSettings>
+#include <QUrl>
 #include <QWidget>
 #include <shlobj.h>
 #include <stdexcept>
@@ -187,6 +189,10 @@ void desktop_platform::open_folder(const QString &path) {
         ShellExecuteW(nullptr, L"explore", directory.c_str(), nullptr, nullptr, SW_SHOWNORMAL));
     if (result <= 32)
         throw std::runtime_error("Не удалось открыть папку приложения.");
+}
+
+bool desktop_platform::open_url(const QUrl &url) {
+    return QDesktopServices::openUrl(url);
 }
 
 QImage desktop_platform::application_icon(const QString &path) {

@@ -8,3 +8,8 @@
 *.hpp eol=lf
 *.hxx eol=lf
 *.inl eol=lf
+*.py eol=lf
+*.sh eol=lf
+*.cmake eol=lf
+*.desktop eol=lf
+packaging/AppRun eol=lf

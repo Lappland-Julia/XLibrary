@@ -2,7 +2,6 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QCoreApplication>
-#include <QDesktopServices>
 #include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QKeySequenceEdit>
@@ -201,9 +200,9 @@ QWidget *about(const ui_context &context, QWidget *) {
     card_layout->addWidget(github);
     card_layout->addWidget(issues);
     QObject::connect(github, &QPushButton::clicked, widget,
-                     [] { QDesktopServices::openUrl(QUrl("https://github.com/Lappland-Julia/XLibrary")); });
+                     [] { desktop_platform::open_url(QUrl("https://github.com/Lappland-Julia/XLibrary")); });
     QObject::connect(issues, &QPushButton::clicked, widget,
-                     [] { QDesktopServices::openUrl(QUrl("https://github.com/Lappland-Julia/XLibrary/issues")); });
+                     [] { desktop_platform::open_url(QUrl("https://github.com/Lappland-Julia/XLibrary/issues")); });
     widget->layout()->addWidget(card);
     widget->layout()->addWidget(label("Технологии и лицензии", "subheading"));
     widget->layout()->addWidget(label(

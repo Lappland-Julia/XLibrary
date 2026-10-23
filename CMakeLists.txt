@@ -134,6 +134,7 @@ qt_add_executable(XLibrary WIN32
         desktop/catalog_store.h desktop/catalog_store.cpp
         desktop/platform_integration.h
         desktop/path_helpers.h
+        desktop/application_paths.h
         desktop/library_model.h desktop/library_model.cpp
         desktop/desktop_service.h desktop/desktop_service.cpp
         desktop/appearance.h desktop/appearance.cpp
@@ -205,6 +206,7 @@ else()
     install(FILES assets/github_avatar_256.png DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps
             RENAME io.github.LapplandJulia.XLibrary.png)
     install(FILES LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/XLibrary)
+    include(packaging/linux_package.cmake)
 endif()
 
 # ------------------------------------------------------------

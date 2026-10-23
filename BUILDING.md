@@ -48,6 +48,40 @@ QT_QPA_PLATFORM=offscreen ./cmake-build-linux-debug/XLibrary --check-startup
 
 Для Xvfb нужны `xvfb`, `xauth`, `dbus-x11` и runtime-зависимости Qt xcb. CI собирает GCC Debug/Release и Clang Debug, проверяет X11-старт и системную установку. Интерактивные сценарии рабочего стола и пользовательские приложения требуют проверки в конкретной среде.
 
+## Linux: AppImage portable и установщик DEB
+
+Из корня проекта, после конфигурации `linux-release`:
+
+```sh
+python3 packaging/build_release.py
+# Только один формат или другой каталог результата:
+python3 packaging/build_release.py --format appimage --output-path release/appimage
+python3 packaging/build_release.py --format deb --output-path release/deb
+```
+
+Нужны Python **3.11+**, `curl`, `dpkg-dev`, `desktop-file-utils` и динамический Qt. Скрипт проверяет Release, архитектуру x86_64 и `XLIBRARY_NATIVE_CPU=OFF`, сам собирает программу и проверяет запуск пакетов. В `release/v<версия>-linux/` создаются AppImage, `.deb`, `SHA256SUMS.txt` и `build-info.json`. Существующий каталог результата не перезаписывается; для повторной упаковки выберите новый `--output-path`. Временная упаковка выполняется в Linux `/tmp`, чтобы сохранялись Unix-права и ссылки, в том числе при WSL и исходниках на NTFS.
+
+**AppImage** включает Qt, платформенные плагины X11/Wayland, C++ runtime, лицензии и исходники Qt. Инструменты упаковки загружаются по фиксированным версиям из `packaging/appimage_tools.json` и проверяются по SHA256. Для системного Qt нужны включённые `deb-src` репозитории: упаковщик получает точную версию исходного пакета и исправления дистрибутива через `apt-get source --download-only`. Для официального Qt SDK используются проверенные исходные архивы из `packaging/qt_sources.json`; неизвестные версии и библиотеки останавливают упаковку.
+
+```sh
+chmod +x XLibrary-0.1.1-linux-x86_64.AppImage
+./XLibrary-0.1.1-linux-x86_64.AppImage
+# Если FUSE недоступен, например в некоторых средах WSL:
+./XLibrary-0.1.1-linux-x86_64.AppImage --appimage-extract-and-run
+```
+
+Версия в имени берётся из `VERSION`. Каталог и настройки сохраняются в `<имя файла>.AppImage.data` рядом с образом. Переносите AppImage вместе с этой папкой и сохраняйте имя файла. Каталог должен быть доступен для записи. Автозапуск указывает на исходный AppImage, а не на временный каталог монтирования. `--check-startup` использует временный профиль и не меняет portable-данные. Программы, запускаемые из библиотеки, получают исходное окружение без подмешивания Qt из AppImage.
+
+**DEB** предназначен для Debian/Ubuntu и совместимых систем. Он использует системный Qt; пакеты и минимальные версии библиотек определяются `dpkg-shlibdeps`. Упаковка DEB требует Qt, установленный пакетным менеджером: отдельный SDK для этого формата отклоняется. Платформенные плагины Qt, Wayland и `xdg-utils` объявлены зависимостями. Пакет устанавливает программу в `/usr/bin/XLibrary`, ярлык в меню и значок; пользовательские данные остаются в XDG-профиле.
+
+```sh
+sudo apt install ./xlibrary_0.1.1_amd64.deb
+XLibrary
+sudo apt remove xlibrary
+```
+
+Оба формата сохраняют ABI базовой системы сборки: AppImage не заменяет glibc, графические драйверы и оконный сервер. Текущая автоматическая упаковка выполняется на **Ubuntu 26.04 x86_64**; созданный там DEB предназначен для этой базы, а AppImage требует совместимую glibc. Для более старой системы собирайте пакет на ней с подходящим Qt. Готовые файлы CI доступны в артефакте `XLibrary-linux-x86_64`; автоматической публикации GitHub Release нет.
+
 ## Windows
 
 Нужны Windows 10/11 x64, Git, CMake 3.21+, компилятор C++23 и **динамический** Qt 6.5+ с Widgets, Concurrent и Network. Для Ninja нужен `ninja.exe` в PATH. При первой конфигурации CMake скачивает SQLite с проверкой хеша.

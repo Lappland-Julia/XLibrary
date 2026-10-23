@@ -1,0 +1,5 @@
+# GitHub поддерживает эту hosted-метку с 2026 года; actionlint 1.7.12 ещё не содержит её.
+# https://github.blog/changelog/2026-09-17-ubuntu-26-generally-available-and-latest-migration/
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04

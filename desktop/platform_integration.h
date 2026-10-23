@@ -14,6 +14,7 @@
 #include "catalog_types.h"
 
 class QWidget;
+class QUrl;
 #ifdef Q_OS_LINUX
 class LinuxHotkeyState;
 #endif
@@ -24,6 +25,7 @@ QSet<QString> running_paths(const QVector<app_record> &applications);
 bool activate_window(const QString &path);
 void launch_application(const app_record &record);
 void open_folder(const QString &path);
+bool open_url(const QUrl &url);
 QImage application_icon(const QString &path);
 app_record resolve_application(const QString &path);
 QVector<app_record> discover(bool registry, bool start_menu, QStringList &issues, const std::atomic_bool &cancelled,
