@@ -166,6 +166,7 @@ else()
 endif()
 
 install(TARGETS XLibrary RUNTIME DESTINATION .)
+install(IMPORTED_RUNTIME_ARTIFACTS Qt6::Concurrent RUNTIME DESTINATION .)
 # Qt развёртывается только при install; CRT добавляет упаковщик из выбранного toolchain.
 qt_generate_deploy_app_script(TARGET XLibrary OUTPUT_SCRIPT xlibrary_deploy_script
         NO_TRANSLATIONS NO_COMPILER_RUNTIME)

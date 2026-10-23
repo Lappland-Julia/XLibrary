@@ -97,6 +97,9 @@ try {
     if ($compiler -eq 'mingw') {
         foreach ($dll in @('libgcc_s_seh-1.dll', 'libstdc++-6.dll', 'libwinpthread-1.dll')) {
             $runtime = & $config.compiler "-print-file-name=$dll"
+            if ($LASTEXITCODE -eq 0 -and $runtime -eq $dll) {
+                $runtime = Join-Path $compiler_bin $dll
+            }
             if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $runtime -PathType Leaf)) {
                 throw "Configured MinGW cannot locate $dll"
             }
