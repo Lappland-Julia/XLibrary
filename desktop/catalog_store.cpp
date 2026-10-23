@@ -95,7 +95,8 @@ void CatalogStore::execute(const char *sql) const {
     }
 }
 
-CatalogStore::CatalogStore() {
+CatalogStore::CatalogStore(const QString &database_path)
+    : database(std::filesystem::path(database_path.toStdWString()), false) {
     auto *connection = database.get_connection();
     sqlite3_busy_timeout(connection, 1500);
     bool has_desktop = false;

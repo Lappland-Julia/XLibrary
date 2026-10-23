@@ -53,7 +53,13 @@ void Database::initialize() const {
     )");
 }
 
-Database::Database() : file_path(get_database_path()) {
+Database::Database() : Database({}, true) {
+}
+
+Database::Database(const std::filesystem::path &path, bool drop_on_add_error)
+    : drop_on_add_error(drop_on_add_error), file_path(path.empty() ? get_database_path() : path) {
+    if (!this->file_path.is_absolute())
+        throw std::invalid_argument("Database path must be absolute");
     std::filesystem::create_directories(this->file_path.parent_path());
 
     const auto utf8_path = this->file_path.u8string();

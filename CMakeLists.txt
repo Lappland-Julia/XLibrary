@@ -148,6 +148,17 @@ qt_add_resources(XLibrary application_images
 target_compile_definitions(XLibrary PRIVATE XLIBRARY_VERSION="${PROJECT_VERSION}")
 
 target_link_libraries(XLibrary PRIVATE xlibrary_core Qt6::Widgets Qt6::Concurrent Qt6::Network ole32 uuid dwmapi)
+
+configure_file(packaging/windows_version.rc.in windows_version.rc @ONLY)
+target_sources(XLibrary PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/windows_version.rc")
+if(MINGW)
+    set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/windows_version.rc" APPEND PROPERTY
+            COMPILE_OPTIONS --use-temp-file)
+endif()
+
+# Метаданные выбранного toolchain нужны только явной упаковке.
+configure_file(packaging/build_config.json.in packaging-config.json @ONLY)
+
 if(MSVC)
     target_compile_options(XLibrary PRIVATE /utf-8 /W4)
 else()
@@ -155,8 +166,11 @@ else()
 endif()
 
 install(TARGETS XLibrary RUNTIME DESTINATION .)
-qt_generate_deploy_app_script(TARGET XLibrary OUTPUT_SCRIPT xlibrary_deploy_script NO_UNSUPPORTED_PLATFORM_ERROR)
-install(SCRIPT ${xlibrary_deploy_script})
+# Qt развёртывается только при install; CRT добавляет упаковщик из выбранного toolchain.
+qt_generate_deploy_app_script(TARGET XLibrary OUTPUT_SCRIPT xlibrary_deploy_script
+        NO_TRANSLATIONS NO_COMPILER_RUNTIME)
+install(SCRIPT "${xlibrary_deploy_script}")
+install(FILES LICENSE DESTINATION .)
 
 # ------------------------------------------------------------
 # Release: O2
