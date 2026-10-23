@@ -80,7 +80,12 @@ QDialog *application_editor(const ui_context &context, QWidget *parent) {
     QObject::connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
     QObject::connect(browse, &QPushButton::clicked, dialog, [=] {
         const auto file = QFileDialog::getOpenFileName(dialog, "Выберите приложение", {},
-                                                       "Приложения (*.exe *.lnk *.bat *.cmd);;Все файлы (*)");
+#ifdef Q_OS_WIN
+                                                       "Приложения (*.exe *.lnk *.bat *.cmd);;Все файлы (*)"
+#else
+                                                       "Все файлы (*);;Ярлыки приложений (*.desktop);;AppImage (*.AppImage)"
+#endif
+        );
         if (!file.isEmpty()) {
             path->setText(file);
             error->clear();
@@ -108,8 +113,7 @@ QDialog *application_editor(const ui_context &context, QWidget *parent) {
         updated.working_directory = directory->text().trimmed();
         updated.tags = parse_tags(tags->text());
         updated.favorite = favorite->isChecked();
-        if (updated.name.isEmpty() || !QFileInfo(updated.path).isAbsolute() ||
-            QFileInfo(updated.path).suffix().isEmpty()) {
+        if (updated.name.isEmpty() || !QFileInfo(updated.path).isAbsolute()) {
             error->setText("Укажите название и абсолютный путь к файлу приложения.");
             return;
         }
@@ -122,11 +126,13 @@ QDialog *application_editor(const ui_context &context, QWidget *parent) {
                 error->setText("Тег: до 64 символов, без пробелов, запятых и #.");
                 return;
             }
+#ifdef Q_OS_WIN
         if (QFileInfo(updated.path).suffix().compare("lnk", Qt::CaseInsensitive) == 0) {
             service->resolve_application(updated.path);
             error->setText("Ярлык прочитан. Проверьте параметры и сохраните ещё раз.");
             return;
         }
+#endif
         error->clear();
         save->setEnabled(false);
         service->save_application(std::move(updated));

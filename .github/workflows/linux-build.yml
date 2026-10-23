@@ -1,0 +1,68 @@
+name: Linux Build
+
+on:
+  push:
+    branches: [main, linux]
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-build:
+    name: ${{ matrix.preset }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: [linux-debug, linux-release, linux-clang-debug]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install build and desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build clang libx11-dev libgl1-mesa-dev libegl1 \
+            libxkbcommon-x11-0 libxcb-cursor0 xvfb xauth dbus-x11 desktop-file-utils
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4
+        with:
+          version: '6.8.3'
+          arch: linux_gcc_64
+          cache: true
+
+      - name: Configure
+        env:
+          BUILD_PRESET: ${{ matrix.preset }}
+        run: cmake --preset "$BUILD_PRESET"
+
+      - name: Build
+        env:
+          BUILD_PRESET: ${{ matrix.preset }}
+        run: cmake --build --preset "$BUILD_PRESET" --parallel 2
+
+      - name: Check startup on X11
+        env:
+          BUILD_PRESET: ${{ matrix.preset }}
+          QT_QPA_PLATFORM: xcb
+        run: xvfb-run -a dbus-run-session -- "./cmake-build-$BUILD_PRESET/XLibrary" --check-startup
+
+      - name: Install and check desktop entry
+        env:
+          BUILD_PRESET: ${{ matrix.preset }}
+        run: |
+          cmake --install "cmake-build-$BUILD_PRESET" --prefix "$RUNNER_TEMP/xlibrary"
+          desktop-file-validate "$RUNNER_TEMP/xlibrary/share/applications/io.github.LapplandJulia.XLibrary.desktop"
+          QT_QPA_PLATFORM=offscreen "$RUNNER_TEMP/xlibrary/bin/XLibrary" --check-startup

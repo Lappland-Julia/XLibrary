@@ -12,8 +12,8 @@
 #include <shlobj.h>
 #include <stdexcept>
 
+#include "platform_integration.h"
 #include "RegistryScan.h"
-#include "windows_integration.h"
 
 namespace {
 using unique_handle = std::unique_ptr<void, decltype(&CloseHandle)>;
@@ -124,7 +124,11 @@ public:
 };
 }
 
-QSet<QString> desktop_windows::running_paths(const QVector<app_record> &applications) {
+QString desktop_platform::default_global_shortcut() {
+    return "Ctrl+Alt+Space";
+}
+
+QSet<QString> desktop_platform::running_paths(const QVector<app_record> &applications) {
     QSet<QString> names;
     QSet<QString> paths;
     for (const auto &application : applications) {
@@ -153,7 +157,7 @@ QSet<QString> desktop_windows::running_paths(const QVector<app_record> &applicat
     return paths;
 }
 
-bool desktop_windows::activate_window(const QString &path) {
+bool desktop_platform::activate_window(const QString &path) {
     window_search search{QDir::toNativeSeparators(path), nullptr};
     EnumWindows(find_window, reinterpret_cast<LPARAM>(&search));
     if (!search.window) {
@@ -168,7 +172,7 @@ bool desktop_windows::activate_window(const QString &path) {
     return true;
 }
 
-void desktop_windows::launch_application(const app_record &record) {
+void desktop_platform::launch_application(const app_record &record) {
     const ComScope com;
     Application application(record.name.toStdString(), std::filesystem::path(record.path.toStdWString()));
     const auto directory =
@@ -176,7 +180,7 @@ void desktop_windows::launch_application(const app_record &record) {
     application.launch(record.arguments.toStdWString(), std::filesystem::path(directory.toStdWString()));
 }
 
-void desktop_windows::open_folder(const QString &path) {
+void desktop_platform::open_folder(const QString &path) {
     const ComScope com;
     const auto directory = QDir::toNativeSeparators(QFileInfo(path).absolutePath()).toStdWString();
     const auto result = reinterpret_cast<INT_PTR>(
@@ -185,7 +189,7 @@ void desktop_windows::open_folder(const QString &path) {
         throw std::runtime_error("Не удалось открыть папку приложения.");
 }
 
-QImage desktop_windows::application_icon(const QString &path) {
+QImage desktop_platform::application_icon(const QString &path) {
     HICON large = nullptr;
     const auto native_path = QDir::toNativeSeparators(path).toStdWString();
     ExtractIconExW(native_path.c_str(), 0, &large, nullptr, 1);
@@ -197,7 +201,7 @@ QImage desktop_windows::application_icon(const QString &path) {
     return result;
 }
 
-app_record desktop_windows::resolve_application(const QString &path) {
+app_record desktop_platform::resolve_application(const QString &path) {
     const ComScope com;
     app_record result;
     result.path = QFileInfo(path).absoluteFilePath();
@@ -245,9 +249,9 @@ app_record desktop_windows::resolve_application(const QString &path) {
     return result;
 }
 
-QVector<app_record> desktop_windows::discover(bool registry, bool start_menu, QStringList &issues,
-                                              const std::atomic_bool &cancelled,
-                                              const std::function<void(const discovery_progress &)> &progress) {
+QVector<app_record> desktop_platform::discover(bool registry, bool start_menu, QStringList &issues,
+                                               const std::atomic_bool &cancelled,
+                                               const std::function<void(const discovery_progress &)> &progress) {
     QVector<app_record> result;
     QStringList shortcuts;
     // Сначала собираем очередь: её размер не меняется во время чтения ярлыков и метаданных EXE.
@@ -318,7 +322,7 @@ QVector<app_record> desktop_windows::discover(bool registry, bool start_menu, QS
     return result;
 }
 
-bool desktop_windows::set_autostart(bool enabled, QString &error) {
+bool desktop_platform::set_autostart(bool enabled, QString &error) {
     QSettings startup("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", QSettings::NativeFormat);
     if (enabled) {
         startup.setValue("XLibrary",
@@ -334,13 +338,13 @@ bool desktop_windows::set_autostart(bool enabled, QString &error) {
     return true;
 }
 
-bool desktop_windows::animations_enabled() {
+bool desktop_platform::animations_enabled() {
     BOOL enabled = TRUE;
     SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &enabled, 0);
     return enabled;
 }
 
-void desktop_windows::apply_backdrop(QWidget *window, bool dark, bool glass) {
+void desktop_platform::apply_backdrop(QWidget *window, bool dark, bool glass) {
     const auto handle = reinterpret_cast<HWND>(window->winId());
     const BOOL dark_value = dark;
     DwmSetWindowAttribute(handle, 20, &dark_value, sizeof(dark_value));

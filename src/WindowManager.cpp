@@ -1,4 +1,6 @@
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 #include <iomanip>
 #include <iostream>
@@ -6,6 +8,7 @@
 #include "WindowManager.h"
 
 double WindowManager::get_screen_brightness() const {
+#ifdef _WIN32
     // Размеры только главного монитора
     const int width = GetSystemMetrics(SM_CXSCREEN);
     const int height = GetSystemMetrics(SM_CYSCREEN);
@@ -86,6 +89,10 @@ double WindowManager::get_screen_brightness() const {
     ReleaseDC(nullptr, screenDC);
 
     return average;
+#else
+    // Wayland не предоставляет приложению снимок экрана без разрешения пользователя.
+    return -1.0;
+#endif
 }
 
 void WindowManager::update_theme() {

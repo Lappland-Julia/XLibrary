@@ -259,8 +259,9 @@ void MainWindow::apply_settings() {
     appearance::apply(service.settings, registry.style_sheet());
     QString error;
     if (!hotkey.set_sequence(
-            QKeySequence::fromString(service.settings.value("shortcuts/global", "Ctrl+Alt+Space").toString(),
-                                     QKeySequence::PortableText),
+            QKeySequence::fromString(
+                service.settings.value("shortcuts/global", desktop_platform::default_global_shortcut()).toString(),
+                QKeySequence::PortableText),
             error))
         service.notify(error);
     const QList<QStringList> shortcuts{{"focus_search", "shortcuts/search", "Ctrl+K"},
@@ -269,8 +270,8 @@ void MainWindow::apply_settings() {
     for (const auto &value : shortcuts)
         context.actions.value(value[0])->setShortcut(QKeySequence::fromString(
             service.settings.value(value[1], value[2]).toString(), QKeySequence::PortableText));
-    desktop_windows::apply_backdrop(this, appearance::is_dark(service.settings),
-                                    service.settings.value("appearance/glass", false).toBool());
+    desktop_platform::apply_backdrop(this, appearance::is_dark(service.settings),
+                                     service.settings.value("appearance/glass", false).toBool());
     refresh_actions();
     update_layout();
 }
@@ -279,7 +280,9 @@ void MainWindow::load_plugins() {
     const QDir directory(QApplication::applicationDirPath() + "/plugins");
     QStringList available;
     const auto enabled = service.settings.value("plugins/enabled").toStringList();
-    for (const auto &file : directory.entryInfoList({"*.dll"}, QDir::Files | QDir::NoSymLinks, QDir::Name)) {
+    for (const auto &file : directory.entryInfoList(QDir::Files | QDir::NoSymLinks, QDir::Name)) {
+        if (!QLibrary::isLibrary(file.fileName()))
+            continue;
         auto loader = std::make_unique<QPluginLoader>(file.absoluteFilePath());
         if (loader->metaData().value("IID").toString() != XLIBRARY_UI_PLUGIN_IID)
             continue;

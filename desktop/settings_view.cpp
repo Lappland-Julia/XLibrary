@@ -10,10 +10,10 @@
 #include <QUrl>
 
 #include "desktop_service.h"
+#include "platform_integration.h"
 #include "selection_button.h"
 #include "settings_view.h"
 #include "ui_helpers.h"
-#include "windows_integration.h"
 
 namespace {
 using namespace ui_helpers;
@@ -49,7 +49,7 @@ void choices(QWidget *page, QSettings &settings, const QString &key, const QStri
 QWidget *general(const ui_context &context, QWidget *) {
     auto *widget = page("Поведение приложения");
     auto &settings = *context.settings;
-    checkbox(widget, settings, "behavior/autostart", "Запускать вместе с Windows", false);
+    checkbox(widget, settings, "behavior/autostart", "Запускать при входе в систему", false);
     checkbox(widget, settings, "behavior/close_to_tray", "Сворачивать в трей при закрытии", true);
     choices(widget, settings, "behavior/after_launch", "После запуска приложения",
             {{"Оставить окно открытым", "keep"}, {"Свернуть окно", "minimize"}, {"Скрыть в трей", "hide"}}, "keep");
@@ -66,23 +66,26 @@ QWidget *appearance_page(const ui_context &context, QWidget *) {
     auto &settings = *context.settings;
     choices(widget, settings, "appearance/theme", "Тема",
             {{"Тёмная", "dark"}, {"Светлая", "light"}, {"Системная", "system"}}, "dark");
+#ifdef Q_OS_WIN
     checkbox(widget, settings, "appearance/glass", "Системный материал рамки Windows 11", false);
     widget->layout()->addWidget(
         label("В Windows 10 используется обычная непрозрачная рамка. Список и текст остаются непрозрачными.", "muted"));
+#endif
     choices(widget, settings, "appearance/text_scale", "Размер текста",
             {{"100%", 100}, {"125%", 125}, {"150%", 150}, {"200%", 200}}, 100);
     widget->layout()->addWidget(
-        label("Короткие плавные переходы учитывают системную настройку анимации Windows.", "muted"));
+        label("Короткие плавные переходы учитывают доступные системные настройки анимации.", "muted"));
     static_cast<QVBoxLayout *>(widget->layout())->addStretch();
     return widget;
 }
 
 QWidget *hotkeys(const ui_context &context, QWidget *) {
     auto *widget = page("Горячие клавиши");
-    const QList<QStringList> values{{"shortcuts/global", "Показать библиотеку из любого приложения", "Ctrl+Alt+Space"},
-                                    {"shortcuts/search", "Поиск в библиотеке", "Ctrl+K"},
-                                    {"shortcuts/add", "Добавить приложение", "Ctrl+N"},
-                                    {"shortcuts/settings", "Открыть настройки", "Ctrl+,"}};
+    const QList<QStringList> values{
+        {"shortcuts/global", "Показать библиотеку из любого приложения", desktop_platform::default_global_shortcut()},
+        {"shortcuts/search", "Поиск в библиотеке", "Ctrl+K"},
+        {"shortcuts/add", "Добавить приложение", "Ctrl+N"},
+        {"shortcuts/settings", "Открыть настройки", "Ctrl+,"}};
     for (const auto &value : values) {
         auto *control = new QKeySequenceEdit(QKeySequence::fromString(
             context.settings->value(value[0], value[2]).toString(), QKeySequence::PortableText));
@@ -91,6 +94,12 @@ QWidget *hotkeys(const ui_context &context, QWidget *) {
         control->setProperty("setting_key", value[0]);
         field(static_cast<QVBoxLayout *>(widget->layout()), value[1], control);
     }
+#ifdef Q_OS_LINUX
+    widget->layout()->addWidget(
+        label("В Wayland назначьте сочетание в настройках рабочего стола для команды XLibrary. "
+              "Она открывает уже запущенную библиотеку. Встроенное глобальное сочетание доступно в X11.",
+              "muted"));
+#endif
     widget->layout()->addWidget(label("Пустое поле отключает сочетание. Enter запускает выбранное приложение; ↑↓ "
                                       "выбирают строку. Escape очищает поиск.",
                                       "muted"));
@@ -101,8 +110,13 @@ QWidget *hotkeys(const ui_context &context, QWidget *) {
 QWidget *library_settings(const ui_context &context, QWidget *) {
     auto *service = static_cast<DesktopService *>(context.service);
     auto *widget = page("Источники приложений");
+#ifdef Q_OS_WIN
     checkbox(widget, *context.settings, "sources/registry", "Зарегистрированные приложения Windows", true);
     checkbox(widget, *context.settings, "sources/start_menu", "Ярлыки меню «Пуск»", true);
+#else
+    checkbox(widget, *context.settings, "sources/registry", "Системные приложения Linux", true);
+    checkbox(widget, *context.settings, "sources/start_menu", "Приложения пользователя Linux", true);
+#endif
     widget->layout()->addWidget(label(
         "Поиск выполняется по запросу. Изменённые источники будут использованы после сохранения настроек.", "muted"));
     widget->layout()->addWidget(action_button(context.actions.value("discover")));
@@ -152,7 +166,8 @@ QWidget *plugins(const ui_context &context, QWidget *) {
         widget->layout()->addWidget(control);
     }
     if (available.isEmpty())
-        widget->layout()->addWidget(label("Модули не установлены. Каталог: plugins рядом с XLibrary.exe.", "muted"));
+        widget->layout()->addWidget(
+            label("Модули не установлены. Каталог: plugins рядом с исполняемым файлом XLibrary.", "muted"));
     static_cast<QVBoxLayout *>(widget->layout())->addStretch();
     return widget;
 }
@@ -177,7 +192,7 @@ QWidget *about(const ui_context &context, QWidget *) {
     title->addWidget(version);
     identity->addLayout(title, 1);
     card_layout->addLayout(identity);
-    card_layout->addWidget(label("Библиотека приложений для Windows", "subheading"));
+    card_layout->addWidget(label("Библиотека приложений для Windows и Linux", "subheading"));
     card_layout->addWidget(label("Приложения, теги и сценарии в одном месте. Каталог хранится локально; интернет для "
                                  "работы не требуется.",
                                  "muted"));
@@ -304,18 +319,22 @@ QDialog *settings_dialog(const ui_context &context, QWidget *parent) {
         }
         values.insert("plugins/enabled", enabled);
         const auto previous_global = QKeySequence::fromString(
-            service->settings.value("shortcuts/global", "Ctrl+Alt+Space").toString(), QKeySequence::PortableText);
+            service->settings.value("shortcuts/global", desktop_platform::default_global_shortcut()).toString(),
+            QKeySequence::PortableText);
         QString failure;
-        if (hotkey && !hotkey->set_sequence(QKeySequence::fromString(values.value("shortcuts/global").toString(),
-                                                                     QKeySequence::PortableText),
-                                            failure)) {
+        if (hotkey &&
+            previous_global !=
+                QKeySequence::fromString(values.value("shortcuts/global").toString(), QKeySequence::PortableText) &&
+            !hotkey->set_sequence(
+                QKeySequence::fromString(values.value("shortcuts/global").toString(), QKeySequence::PortableText),
+                failure)) {
             show_error(failure);
             categories->button(2)->click();
             return;
         }
         const bool old_autostart = service->settings.value("behavior/autostart", false).toBool();
         const bool new_autostart = values.value("behavior/autostart").toBool();
-        if (old_autostart != new_autostart && !desktop_windows::set_autostart(new_autostart, failure)) {
+        if (old_autostart != new_autostart && !desktop_platform::set_autostart(new_autostart, failure)) {
             if (hotkey) {
                 QString ignored;
                 hotkey->set_sequence(previous_global, ignored);
@@ -338,7 +357,7 @@ QDialog *settings_dialog(const ui_context &context, QWidget *parent) {
             }
             if (old_autostart != new_autostart) {
                 QString ignored;
-                desktop_windows::set_autostart(old_autostart, ignored);
+                desktop_platform::set_autostart(old_autostart, ignored);
             }
             show_error("Не удалось сохранить файл настроек.");
             return;

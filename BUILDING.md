@@ -1,4 +1,54 @@
-# Сборка и выпуск XLibrary для Windows
+# Сборка XLibrary для Windows и Linux
+
+## Linux и CLion
+
+Нужны Linux с `/proc`, компилятор C++23 (GCC 13+ или Clang 17+ с соответствующей libstdc++), CMake 3.21+, Ninja и Qt **6.5+** с Widgets, Concurrent, Network и DBus. Для глобального сочетания и переключения окон в X11 установите заголовки Xlib. Без Xlib сборка поддерживается, но эти две функции недоступны. Qt для Windows нельзя использовать при сборке Linux.
+
+Например, в Ubuntu **26.04** системный Qt удовлетворяет минимальной версии:
+
+```sh
+sudo apt-get update
+sudo apt-get install build-essential clang cmake ninja-build qt6-base-dev qt6-wayland libx11-dev
+cmake --preset linux-debug
+cmake --build --preset linux-debug --parallel 4
+./cmake-build-linux-debug/XLibrary
+```
+
+В других дистрибутивах установите аналогичные development-пакеты. Если системный Qt старее 6.5, установите Linux Qt отдельно и передайте `-DCMAKE_PREFIX_PATH=/path/to/Qt/gcc_64`. SQLite загружается с проверкой хеша. Для автономной конфигурации можно указать уже проверенные исходники: `-DFETCHCONTENT_SOURCE_DIR_SQLITE3=/absolute/path/to/sqlite-amalgamation`.
+
+В `CMakePresets.json` есть профили `linux-debug`, `linux-release`, `linux-clang-debug`, `windows-debug`, `windows-release` с раздельными каталогами. На Linux:
+
+```sh
+cmake --preset linux-release
+cmake --build --preset linux-release --parallel 4
+cmake --preset linux-clang-debug
+cmake --build --preset linux-clang-debug --parallel 4
+cmake --install cmake-build-linux-release --prefix "$HOME/.local"
+```
+
+Установка Linux добавляет `bin/XLibrary`, ярлык в `share/applications`, значок и лицензию. Для неё нужны системные runtime-пакеты выбранного Qt и Xlib. Если использован отдельный Qt SDK, настройте поиск его библиотек для установленного приложения. Добавьте `$HOME/.local/bin` в PATH для запуска из меню. Для разработки установка приложения не требуется.
+
+В CLion откройте корневой `CMakeLists.txt`, загрузите CMake presets и включите нужный профиль в **Settings → Build, Execution, Deployment → CMake**. Для Linux выберите Linux toolchain. На Windows с WSL выберите toolchain **WSL / Ubuntu**, Linux CMake и Linux Qt внутри WSL. Если профиль скрыт условием ОС Windows-хоста, создайте WSL CMake profile вручную: Build directory `cmake-build-wsl-debug`, Build type `Debug`, без Windows `CMAKE_PREFIX_PATH`. Для Windows выберите совместимые Qt и MSVC/MinGW, как описано ниже. Выберите цель `XLibrary` и Build/Run/Debug. Пользовательские пути храните в игнорируемом `CMakeUserPresets.json`. Не переносите Windows PATH и `QT_QPA_PLATFORM_PLUGIN_PATH` в Linux-конфигурацию запуска.
+
+Особенности Linux:
+
+- Обнаружение использует XDG `.desktop`; пользовательские записи имеют приоритет. Учитываются `Hidden`, `NoDisplay`, `OnlyShowIn`, `NotShowIn`, `TryExec`, локализованные названия, `Exec`, `Icon`, `Path`, `Terminal` и D-Bus activation. Аргументы пользователя добавляются к `Exec`, shell-подстановок нет. Для `Terminal=true` нужен установленный терминал.
+- Можно добавлять абсолютные пути к исполняемым файлам, AppImage и скриптам с shebang и разрешением `+x`. Расширение не обязательно; регистр путей учитывается. AppImage требует его собственных runtime-зависимостей. Статус читается из `/proc`; wrapper, заменяющий себя другим executable, может не сопоставиться с записью. Flatpak/Snap учитываются по доступным метаданным процесса; `hidepid` и права ограничивают наблюдение.
+- БД: `$XDG_DATA_HOME/XLibrary/xlibrary.db`, иначе `~/.local/share/XLibrary/xlibrary.db`. Настройки: Qt AppLocalDataLocation, обычно `~/.local/share/XLibrary/XLibrary/settings.ini`. Portable-флаг рядом с бинарником включает каталог `data`; `--check-startup` использует временный профиль. Автозапуск: `$XDG_CONFIG_HOME/autostart`, иначе `~/.config/autostart`.
+- Встроенное глобальное сочетание и запрос переключения чужого окна доступны в X11. В Wayland назначьте сочетание в настройках рабочего стола для команды `XLibrary`: второй запуск передаёт запрос работающему экземпляру. Переключение чужих окон ограничено композитором; при недоступности выполняется обычный запуск. Трей зависит от рабочего стола; без трея закрытие завершает приложение, а фоновый старт показывает окно.
+- Эффекты рамки Windows доступны только Windows. Linux использует Qt и системное оформление окон. Нативные UI-плагины Linux — `.so` в `plugins` рядом с бинарником, собранные с совместимыми Qt и C++ ABI.
+
+Проверка запуска с временным профилем:
+
+```sh
+./cmake-build-linux-debug/XLibrary --check-startup
+QT_QPA_PLATFORM=xcb xvfb-run -a dbus-run-session -- ./cmake-build-linux-debug/XLibrary --check-startup
+QT_QPA_PLATFORM=offscreen ./cmake-build-linux-debug/XLibrary --check-startup
+```
+
+Для Xvfb нужны `xvfb`, `xauth`, `dbus-x11` и runtime-зависимости Qt xcb. CI собирает GCC Debug/Release и Clang Debug, проверяет X11-старт и системную установку. Интерактивные сценарии рабочего стола и пользовательские приложения требуют проверки в конкретной среде.
+
+## Windows
 
 Нужны Windows 10/11 x64, Git, CMake 3.21+, компилятор C++23 и **динамический** Qt 6.5+ с Widgets, Concurrent и Network. Для Ninja нужен `ninja.exe` в PATH. При первой конфигурации CMake скачивает SQLite с проверкой хеша.
 

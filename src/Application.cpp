@@ -1,6 +1,8 @@
+#ifdef _WIN32
 #include <windows.h>
 #include <shellapi.h>
 #include <winver.h>
+#endif
 
 #include <algorithm>
 #include <cstddef>
@@ -17,18 +19,35 @@
 #include <vector>
 
 #include "Application.h"
+#ifndef _WIN32
+#include "linux_process.h"
+#endif
 
 std::uint32_t Application::get_pid() const noexcept {
+#ifdef _WIN32
     if (!this->process_handle || WaitForSingleObject(this->process_handle.get(), 0) != WAIT_TIMEOUT) {
         return 0;
     }
     return this->pid;
+#else
+    if (!this->process_handle) {
+        return 0;
+    }
+    try {
+        std::error_code error;
+        const auto identity = std::static_pointer_cast<xlibrary::process_identity>(this->process_handle);
+        return xlibrary::is_process_alive(*identity, error) ? this->pid : 0;
+    } catch (...) {
+        return 0;
+    }
+#endif
 }
 
 std::string Application::read_application_name(const std::filesystem::path &executable_path) {
     const auto filename_utf8 = executable_path.stem().u8string();
     const std::string fallback_name(filename_utf8.begin(), filename_utf8.end());
 
+#ifdef _WIN32
     DWORD ignored_handle{};
     const DWORD version_size = GetFileVersionInfoSizeW(executable_path.c_str(), &ignored_handle);
     if (version_size == 0) {
@@ -99,6 +118,7 @@ std::string Application::read_application_name(const std::filesystem::path &exec
             }
         }
     }
+#endif
 
     return fallback_name;
 }
@@ -113,6 +133,7 @@ std::uint32_t Application::launch(const std::wstring &arguments, const std::file
         throw std::invalid_argument("Application executable path is empty");
     }
 
+#ifdef _WIN32
     SHELLEXECUTEINFOW launch_info{};
     launch_info.cbSize = sizeof(launch_info);
     launch_info.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI;
@@ -141,6 +162,13 @@ std::uint32_t Application::launch(const std::wstring &arguments, const std::file
     this->process_handle = std::move(process_handle);
     this->pid = process_id;
     return process_id;
+#else
+    auto identity = std::make_shared<xlibrary::process_identity>();
+    *identity = xlibrary::launch_process(executable_path, arguments, working_directory);
+    this->pid = identity->pid;
+    this->process_handle = std::move(identity);
+    return this->pid;
+#endif
 }
 
 std::ostream &operator<<(std::ostream &stream, const Application &application) {
@@ -154,15 +182,21 @@ std::ostream &operator<<(std::ostream &stream, const Application &application) {
 }
 
 void Application::set_executable(std::filesystem::path const &file_path) {
+    if (file_path.empty()) {
+        throw std::invalid_argument("Application executable path is empty");
+    }
     std::filesystem::path executable_path = std::filesystem::absolute(file_path);
 
+#ifdef _WIN32
     auto extension = executable_path.extension().wstring();
     std::ranges::transform(extension, extension.begin(),
                            [](wchar_t character) { return static_cast<wchar_t>(std::towlower(character)); });
+#endif
 
     const auto name_utf8 = executable_path.stem().u8string();
     std::string application_name(name_utf8.begin(), name_utf8.end());
 
+#ifdef _WIN32
     if (extension == L"") {
         throw std::invalid_argument("Invalid app path");
     }
@@ -170,6 +204,7 @@ void Application::set_executable(std::filesystem::path const &file_path) {
     if (extension == L".exe" && std::filesystem::is_regular_file(executable_path)) {
         application_name = this->read_application_name(executable_path);
     }
+#endif
 
     if (this->file_path != executable_path) {
         this->process_handle.reset();

@@ -1,5 +1,7 @@
+#ifdef _WIN32
 #include <windows.h>
 #include <tlhelp32.h>
+#endif
 
 #include <atomic>
 #include <chrono>
@@ -12,7 +14,11 @@
 #include <utility>
 
 #include "Heartbeat.h"
+#ifndef _WIN32
+#include "linux_process.h"
+#endif
 
+#ifdef _WIN32
 namespace {
 using unique_handle = std::unique_ptr<void, decltype(&CloseHandle)>;
 
@@ -47,6 +53,7 @@ std::pair<bool, DWORD> check_process_handle(HANDLE process_handle, const std::ws
     return {comparison == CSTR_EQUAL && final_wait == WAIT_TIMEOUT, 0};
 }
 }
+#endif
 
 struct Heartbeat::State {
     std::atomic<bool> alive{false};
@@ -55,6 +62,7 @@ struct Heartbeat::State {
 
 Heartbeat::Heartbeat(std::uint32_t process_id, const std::filesystem::path &executable_path)
     : state(std::make_shared<State>()) {
+#ifdef _WIN32
     const auto expected_name = executable_path.filename().wstring();
     if (process_id == 0 || expected_name.empty()) {
         throw std::invalid_argument("Heartbeat requires a nonzero PID and an executable name");
@@ -129,6 +137,31 @@ Heartbeat::Heartbeat(std::uint32_t process_id, const std::filesystem::path &exec
         }
         return std::pair<bool, DWORD>{false, check_error};
     };
+#else
+    if (process_id == 0 || executable_path.filename().empty()) {
+        throw std::invalid_argument("Heartbeat requires a nonzero PID and an executable name");
+    }
+    const auto expected_path = std::filesystem::weakly_canonical(std::filesystem::absolute(executable_path));
+    std::error_code initial_error;
+    auto identity = xlibrary::read_process_identity(process_id, initial_error);
+    if (initial_error) {
+        throw std::system_error(initial_error, "Cannot open heartbeat process");
+    }
+    auto check_process = [identity, expected_path]() mutable -> std::pair<bool, std::uint32_t> {
+        std::error_code error;
+        if (identity) {
+            if (xlibrary::process_matches(*identity, expected_path, error)) {
+                return {true, 0};
+            }
+            if (error) {
+                return {false, static_cast<std::uint32_t>(error.value())};
+            }
+            identity.reset();
+        }
+        identity = xlibrary::find_process(expected_path, error);
+        return {identity.has_value(), static_cast<std::uint32_t>(error.value())};
+    };
+#endif
 
     const auto [alive, error_code] = check_process();
     if (error_code != 0) {

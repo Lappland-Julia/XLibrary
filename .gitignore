@@ -43,3 +43,4 @@ dist/
 release/
 build-*/
 cmake-build-*/
+CMakeUserPresets.json

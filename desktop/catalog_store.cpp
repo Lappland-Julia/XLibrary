@@ -6,13 +6,13 @@
 #include <stdexcept>
 
 #include "catalog_store.h"
+#include "path_helpers.h"
 
 namespace {
 void validate_application(const app_record &record) {
     if (record.name.trimmed().isEmpty() || record.name.size() > 256 || !QFileInfo(record.path).isAbsolute() ||
-        QFileInfo(record.path).suffix().isEmpty() || record.name.contains(QChar::Null) ||
-        record.path.contains(QChar::Null) || record.arguments.contains(QChar::Null) ||
-        record.working_directory.contains(QChar::Null)) {
+        record.name.contains(QChar::Null) || record.path.contains(QChar::Null) ||
+        record.arguments.contains(QChar::Null) || record.working_directory.contains(QChar::Null)) {
         throw std::invalid_argument("Недопустимое название или путь приложения.");
     }
     if (!record.working_directory.isEmpty() && !QFileInfo(record.working_directory).isAbsolute()) {
@@ -95,8 +95,7 @@ void CatalogStore::execute(const char *sql) const {
     }
 }
 
-CatalogStore::CatalogStore(const QString &database_path)
-    : database(std::filesystem::path(database_path.toStdWString()), false) {
+CatalogStore::CatalogStore(const QString &database_path) : database(filesystem_path(database_path), false) {
     auto *connection = database.get_connection();
     sqlite3_busy_timeout(connection, 1500);
     bool has_desktop = false;
@@ -106,11 +105,13 @@ CatalogStore::CatalogStore(const QString &database_path)
     }
     if (!has_desktop) {
         // Резервная копия через SQLite учитывает журнал и не меняет исходные таблицы.
-        auto backup_path = database.get_file_path().wstring() + L".before-desktop.bak";
+        auto backup_path = database.get_file_path();
+        backup_path += ".before-desktop.bak";
         if (std::filesystem::exists(backup_path)) {
-            backup_path += L"." + std::to_wstring(QDateTime::currentMSecsSinceEpoch());
+            backup_path += "." + std::to_string(QDateTime::currentMSecsSinceEpoch());
         }
-        const auto temporary_path = backup_path + L".partial";
+        auto temporary_path = backup_path;
+        temporary_path += ".partial";
         {
             sqlite3 *raw = nullptr;
             const auto utf8 = std::filesystem::path(temporary_path).u8string();
@@ -244,15 +245,13 @@ qint64 CatalogStore::save_application(const app_record &record) {
     Statement duplicate(connection, "SELECT id, name, path FROM applications WHERE id != ?;");
     duplicate.bind(1, id);
     while (duplicate.next()) {
-        if (duplicate.text(1) == record.name ||
-            QDir::fromNativeSeparators(duplicate.text(2)).compare(record.path, Qt::CaseInsensitive) == 0) {
+        if (duplicate.text(1) == record.name || normalized_path(duplicate.text(2)) == normalized_path(record.path)) {
             throw std::runtime_error("Приложение с таким именем или путём уже есть в библиотеке.");
         }
     }
     if (id == 0) {
         const auto name = record.name.toUtf8();
-        if (!database.add_application(std::string(name.constData(), name.size()),
-                                      std::filesystem::path(record.path.toStdWString())))
+        if (!database.add_application(std::string(name.constData(), name.size()), filesystem_path(record.path)))
             throw std::runtime_error("Приложение уже есть в библиотеке.");
         id = sqlite3_last_insert_rowid(connection);
     } else {
@@ -354,7 +353,7 @@ void CatalogStore::record_launch(qint64 id) {
 }
 
 QString CatalogStore::path() const {
-    return QString::fromStdWString(database.get_file_path().wstring());
+    return path_text(database.get_file_path());
 }
 
 void CatalogStore::clear_history() {
@@ -369,7 +368,7 @@ int CatalogStore::import_records(const QVector<app_record> &records, const std::
     Statement current(database.get_connection(), "SELECT name, path FROM applications;");
     while (current.next()) {
         names.insert(current.text(0));
-        paths.insert(QDir::fromNativeSeparators(current.text(1)).toCaseFolded());
+        paths.insert(normalized_path(current.text(1)));
     }
     int count = 0;
     for (qsizetype index = 0; index < records.size(); ++index) {
@@ -378,10 +377,10 @@ int CatalogStore::import_records(const QVector<app_record> &records, const std::
         if (progress)
             progress(index, records.size());
         const auto &record = records[index];
-        const auto path = QDir::fromNativeSeparators(record.path).toCaseFolded();
+        const auto path = normalized_path(record.path);
         if (!names.contains(record.name) && !paths.contains(path)) {
             validate_application(record);
-            if (!database.add_application(record.name.toStdString(), std::filesystem::path(record.path.toStdWString())))
+            if (!database.add_application(record.name.toStdString(), filesystem_path(record.path)))
                 continue;
             const auto id = sqlite3_last_insert_rowid(database.get_connection());
             write_metadata(id, record);

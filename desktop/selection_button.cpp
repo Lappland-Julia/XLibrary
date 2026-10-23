@@ -1,8 +1,8 @@
 #include <QStyleOptionButton>
 #include <QStylePainter>
 
+#include "platform_integration.h"
 #include "selection_button.h"
-#include "windows_integration.h"
 
 SelectionButton::SelectionButton(const QString &text, QWidget *parent) : QPushButton(text, parent), animation(this) {
     setProperty("navigation", true);
@@ -19,7 +19,7 @@ SelectionButton::SelectionButton(const QString &text, QWidget *parent) : QPushBu
     });
     connect(this, &QPushButton::toggled, this, [this](bool checked) {
         animation.stop();
-        if (!isVisible() || !desktop_windows::animations_enabled()) {
+        if (!isVisible() || !desktop_platform::animations_enabled()) {
             selection_opacity = checked ? 1 : 0;
             update();
             return;
