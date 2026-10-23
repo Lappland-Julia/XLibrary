@@ -12,7 +12,7 @@
 #include <shlobj.h>
 #include <stdexcept>
 
-#include "src/RegistryScan.h"
+#include "RegistryScan.h"
 #include "windows_integration.h"
 
 namespace {

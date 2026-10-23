@@ -113,7 +113,7 @@ add_library(xlibrary_core STATIC
 )
 
 target_compile_definitions(xlibrary_core PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN)
-target_include_directories(xlibrary_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_include_directories(xlibrary_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(xlibrary_core PUBLIC
         sqlite3
         Threads::Threads
@@ -142,6 +142,7 @@ qt_add_executable(XLibrary WIN32
         desktop/main_window.h desktop/main_window.cpp
 )
 set_target_properties(XLibrary PROPERTIES AUTOMOC ON)
+target_include_directories(XLibrary PRIVATE "$<$<COMPILE_LANGUAGE:RC>:${CMAKE_CURRENT_SOURCE_DIR}>")
 set_source_files_properties(assets/application_icon.rc PROPERTIES
         OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/xlibrary.ico"
 )
