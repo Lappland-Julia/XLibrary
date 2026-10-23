@@ -1,0 +1,4 @@
+name: XLibrary CodeQL
+
+queries:
+  - uses: security-extended
