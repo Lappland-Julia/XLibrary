@@ -9,7 +9,6 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMenu>
-#include <QMessageBox>
 #include <QPainter>
 #include <QProgressBar>
 #include <QResizeEvent>
@@ -22,6 +21,7 @@
 #include "appearance.h"
 #include "desktop_service.h"
 #include "library_views.h"
+#include "selection_button.h"
 #include "ui_helpers.h"
 
 namespace {
@@ -98,12 +98,15 @@ public:
         }
         painter->setClipRect(option.rect, Qt::IntersectClip);
         if (selected || hover) {
-            painter->setBrush(selected ? option.palette.highlight() : option.palette.alternateBase());
-            painter->setPen(selected
-                                ? QPen(option.state & QStyle::State_HasFocus ? QColor("#AAB4C1") : QColor("#62666D"))
-                                : QPen(Qt::NoPen));
-            const auto radius = scaled_size(option, 8);
-            painter->drawRoundedRect(row_rect, radius, radius);
+            const auto radius = 10;
+            if (selected)
+                appearance::paint_selection(*painter, QRectF(row_rect).adjusted(0.5, 0.5, -0.5, -0.5), option.palette,
+                                            radius);
+            else {
+                painter->setBrush(option.palette.alternateBase());
+                painter->setPen(Qt::NoPen);
+                painter->drawRoundedRect(row_rect, radius, radius);
+            }
         }
         const auto text_color = option.palette.color(QPalette::Text);
         painter->setPen(text_color);
@@ -202,10 +205,8 @@ QWidget *navigation(const ui_context &context, QWidget *parent) {
                                    {"running", "Запущенные", "play"},
                                    {"scenarios", "Сценарии", "scenarios"}};
     for (const auto &link : links) {
-        auto *item = button(link[1], "quiet");
-        item->setProperty("navigation", true);
+        auto *item = new SelectionButton(link[1]);
         item->setIcon(appearance::icon(link[2]));
-        item->setCheckable(true);
         item->setProperty("navigation_section", link[0]);
         item->setChecked(link[0] == "library");
         item->setMinimumHeight(30);
@@ -221,12 +222,13 @@ QWidget *navigation(const ui_context &context, QWidget *parent) {
     tags->setContextMenuPolicy(Qt::CustomContextMenu);
     layout->addWidget(tags, 1);
     auto rebuild = [=] {
+        const QSignalBlocker blocker(tags);
         const auto current = tags->currentItem() ? tags->currentItem()->text() : QString{};
         tags->clear();
         for (const auto &tag : service->catalog().tags) {
             auto *item = new QListWidgetItem('#' + tag, tags);
             item->setData(Qt::UserRole, tag);
-            item->setSizeHint({100, 36});
+            item->setSizeHint({100, appearance::scaled(*context.settings, 36)});
             if (item->text() == current)
                 tags->setCurrentItem(item);
         }
@@ -241,7 +243,9 @@ QWidget *navigation(const ui_context &context, QWidget *parent) {
         if (service->tag().isEmpty())
             tags->setCurrentItem(nullptr);
     });
-    QObject::connect(tags, &QListWidget::itemClicked, widget, [=](QListWidgetItem *item) {
+    QObject::connect(tags, &QListWidget::currentItemChanged, widget, [=](QListWidgetItem *item) {
+        if (!item)
+            return;
         group->setExclusive(false);
         for (auto *entry : group->buttons())
             entry->setChecked(false);
@@ -262,9 +266,7 @@ QWidget *navigation(const ui_context &context, QWidget *parent) {
             edit_context.parameters.insert("tag", tag);
             open_dialog("tag_editor", edit_context);
         }
-        if (chosen == remove &&
-            QMessageBox::question(widget, "Удалить тег", "Удалить #" + tag + " у всех приложений?",
-                                  QMessageBox::Yes | QMessageBox::No, QMessageBox::No) == QMessageBox::Yes)
+        if (chosen == remove && confirm(widget, "Удалить тег", "Удалить #" + tag + " у всех приложений?"))
             service->remove_tag(tag);
     });
     layout->addWidget(action_button(context.actions.value("add_tag"), true));
@@ -710,9 +712,7 @@ QWidget *scenarios(const ui_context &context, QWidget *parent) {
             }
     });
     QObject::connect(remove, &QPushButton::clicked, widget, [=] {
-        if (list->currentItem() &&
-            QMessageBox::question(widget, "Удалить сценарий", "Удалить выбранный сценарий?",
-                                  QMessageBox::Yes | QMessageBox::No, QMessageBox::No) == QMessageBox::Yes)
+        if (list->currentItem() && confirm(widget, "Удалить сценарий", "Удалить выбранный сценарий?"))
             service->remove_scenario(list->currentItem()->data(Qt::UserRole).toLongLong());
     });
     QObject::connect(stop, &QPushButton::clicked, service, &DesktopService::cancel_scenario);
@@ -733,6 +733,18 @@ void register_library_views(UiRegistry &registry) {
     registry.add_default("search_bar", search_bar);
     registry.add_default("library", library);
     registry.add_default("details", details);
+    registry.add_default("details_dialog", [](const ui_context &context, QWidget *parent) {
+        auto *dialog = new QDialog(parent);
+        dialog->setWindowTitle("Сведения о приложении");
+        prepare_dialog(dialog, context, {400, 660}, {300, 320});
+        auto *layout = new QVBoxLayout(dialog);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->addWidget(context.registry->create("details", context, dialog), 1);
+        auto *close = button("Закрыть");
+        layout->addWidget(close);
+        QObject::connect(close, &QPushButton::clicked, dialog, &QDialog::accept);
+        return dialog;
+    });
     registry.add_default("scenarios", scenarios);
     registry.add_default("application_menu", application_menu);
 }

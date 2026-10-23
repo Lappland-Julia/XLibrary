@@ -5,13 +5,13 @@
 #include <QJsonObject>
 #include <QLineEdit>
 #include <QMenu>
-#include <QMessageBox>
 #include <QStackedWidget>
 #include <QStyleHints>
 #include <QToolButton>
 
 #include "appearance.h"
 #include "editors.h"
+#include "library_splitter.h"
 #include "library_views.h"
 #include "main_window.h"
 #include "settings_view.h"
@@ -26,7 +26,7 @@ QWidget *shell(const ui_context &context, QWidget *parent) {
     auto *root = new QHBoxLayout(widget);
     root->setContentsMargins(0, 0, 0, 0);
     root->setSpacing(0);
-    root->addWidget(context.registry->create("navigation", context, widget));
+    auto *navigation = context.registry->create("navigation", context, widget);
     auto *center = new QWidget;
     auto *body = new QVBoxLayout(center);
     body->setContentsMargins(20, 16, 20, 16);
@@ -76,8 +76,9 @@ QWidget *shell(const ui_context &context, QWidget *parent) {
         notice_text->setText(text);
         notice->show();
     });
-    root->addWidget(center, 1);
-    root->addWidget(context.registry->create("details", context, widget));
+    auto *splitter = new LibrarySplitter(*context.settings, navigation, center,
+                                         context.registry->create("details", context, widget), widget);
+    root->addWidget(splitter);
     QObject::connect(service, &DesktopService::navigation_changed, widget,
                      [=, section = service->section(), tag = service->tag()]() mutable {
                          if (section == service->section() && tag == service->tag())
@@ -94,8 +95,9 @@ QWidget *shell(const ui_context &context, QWidget *parent) {
 MainWindow::MainWindow(DesktopService &service) : service(service), hotkey(this), tray(this) {
     setWindowTitle("XLibrary");
     setWindowIcon(appearance::logo());
-    setMinimumSize(960, 640);
-    resize(1280, 800);
+    const auto available = screen()->availableGeometry().size() - QSize(32, 64);
+    setMinimumSize(QSize(960, 640).boundedTo(available));
+    resize(QSize(1280, 800).boundedTo(available));
     context.service = &service;
     context.catalog = &service.model;
     context.filtered_catalog = &service.filter;
@@ -148,7 +150,7 @@ MainWindow::MainWindow(DesktopService &service) : service(service), hotkey(this)
         }
     });
     if (!restoreGeometry(service.settings.value("window/geometry").toByteArray()))
-        resize(1280, 800);
+        resize(QSize(1280, 800).boundedTo(available));
     apply_settings();
     refresh_actions();
     update_layout();
@@ -199,9 +201,7 @@ void MainWindow::create_actions() {
             return;
         const auto id = record->id;
         const auto name = record->name;
-        if (QMessageBox::question(this, "Удалить приложение",
-                                  "Удалить «" + name + "» из библиотеки? Файлы приложения сохранятся.",
-                                  QMessageBox::Yes | QMessageBox::No, QMessageBox::No) == QMessageBox::Yes)
+        if (confirm(this, "Удалить приложение", "Удалить «" + name + "» из библиотеки? Файлы приложения сохранятся."))
             service.remove_application(id);
     });
     context.actions.value("remove_application")
@@ -222,16 +222,7 @@ void MainWindow::create_actions() {
     });
     add("add_tag", "Добавить тег", "add", [this] { open_dialog("tag_editor", context); });
     add("add_scenario", "Создать сценарий", "add", [this] { open_dialog("scenario_editor", context); });
-    add("details", "Сведения", "app", [this] {
-        auto *dialog = new QDialog(this);
-        dialog->setWindowTitle("Сведения о приложении");
-        dialog->resize(380, 660);
-        auto *layout = new QVBoxLayout(dialog);
-        layout->setContentsMargins(0, 0, 0, 0);
-        layout->addWidget(registry.create("details", context, dialog));
-        dialog->setAttribute(Qt::WA_DeleteOnClose);
-        dialog->show();
-    });
+    add("details", "Сведения", "app", [this] { open_dialog("details_dialog", context); });
     add("quit", "Выход", "x", [this] {
         quitting = true;
         close();
@@ -315,12 +306,11 @@ void MainWindow::load_plugins() {
 }
 
 void MainWindow::update_layout() {
-    if (auto *navigation = findChild<QWidget *>("navigation"))
-        navigation->setFixedWidth(appearance::scaled(service.settings, 208));
-    if (auto *details = centralWidget() ? centralWidget()->findChild<QWidget *>("details") : nullptr) {
-        details->setFixedWidth(appearance::scaled(service.settings, 304));
-        details->setVisible(width() >= appearance::scaled(service.settings, 1120) && service.section() != "scenarios");
-    }
+    // Пользовательская shell плагина сама управляет своей компоновкой.
+    if (centralWidget())
+        for (auto *splitter : centralWidget()->findChildren<QSplitter *>("library_splitter"))
+            if (auto *library = dynamic_cast<LibrarySplitter *>(splitter))
+                library->update_layout(service.section() != "scenarios");
 }
 
 void MainWindow::show_library() {

@@ -1,13 +1,16 @@
+#include <QButtonGroup>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QCoreApplication>
+#include <QDesktopServices>
 #include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QKeySequenceEdit>
-#include <QListWidget>
-#include <QMessageBox>
 #include <QStackedWidget>
+#include <QUrl>
 
 #include "desktop_service.h"
+#include "selection_button.h"
 #include "settings_view.h"
 #include "ui_helpers.h"
 #include "windows_integration.h"
@@ -18,7 +21,7 @@ using namespace ui_helpers;
 QWidget *page(const QString &title) {
     auto *widget = new QWidget;
     auto *layout = new QVBoxLayout(widget);
-    layout->setContentsMargins(24, 16, 24, 24);
+    layout->setContentsMargins(24, 20, 24, 24);
     layout->setSpacing(12);
     layout->addWidget(label(title, "subheading"));
     layout->addSpacing(8);
@@ -69,7 +72,7 @@ QWidget *appearance_page(const ui_context &context, QWidget *) {
     choices(widget, settings, "appearance/text_scale", "Размер текста",
             {{"100%", 100}, {"125%", 125}, {"150%", 150}, {"200%", 200}}, 100);
     widget->layout()->addWidget(
-        label("Интерфейс меняет состояния сразу, без длительных анимаций и постоянного размытия.", "muted"));
+        label("Короткие плавные переходы учитывают системную настройку анимации Windows.", "muted"));
     static_cast<QVBoxLayout *>(widget->layout())->addStretch();
     return widget;
 }
@@ -126,9 +129,8 @@ QWidget *library_settings(const ui_context &context, QWidget *) {
     auto *clear = button("Очистить историю запусков");
     widget->layout()->addWidget(clear);
     QObject::connect(clear, &QPushButton::clicked, widget, [=] {
-        if (QMessageBox::question(widget, "История запусков",
-                                  "Очистить время последних запусков? Приложения и теги сохранятся.",
-                                  QMessageBox::Yes | QMessageBox::No, QMessageBox::No) == QMessageBox::Yes)
+        if (confirm(widget, "История запусков", "Очистить время последних запусков? Приложения и теги сохранятся.",
+                    "Очистить"))
             service->clear_history();
     });
     static_cast<QVBoxLayout *>(widget->layout())->addStretch();
@@ -155,14 +157,44 @@ QWidget *plugins(const ui_context &context, QWidget *) {
     return widget;
 }
 
-QWidget *about(const ui_context &, QWidget *) {
-    auto *widget = page("XLibrary 0.1.0");
-    widget->layout()->addWidget(label("Библиотека приложений для Windows", "subheading"));
-    widget->layout()->addWidget(
-        label("Приложения, теги и сценарии в одном месте. Каталог хранится локально; интернет для работы не требуется.",
-              "muted"));
+QWidget *about(const ui_context &context, QWidget *) {
+    auto *widget = page("О программе");
+    auto *card = new QFrame;
+    card->setProperty("card", true);
+    auto *card_layout = new QVBoxLayout(card);
+    card_layout->setContentsMargins(24, 24, 24, 24);
+    card_layout->setSpacing(12);
+    auto *identity = new QHBoxLayout;
+    identity->setSpacing(16);
+    auto *logo = new QLabel;
+    const auto logo_size = appearance::scaled(*context.settings, 64);
+    logo->setPixmap(appearance::logo().pixmap(logo_size, logo_size));
+    identity->addWidget(logo, 0, Qt::AlignTop);
+    auto *title = new QVBoxLayout;
+    title->addWidget(label("XLibrary", "heading"));
+    auto *version = label("Версия " + QCoreApplication::applicationVersion(), "muted");
+    version->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
+    title->addWidget(version);
+    identity->addLayout(title, 1);
+    card_layout->addLayout(identity);
+    card_layout->addWidget(label("Библиотека приложений для Windows", "subheading"));
+    card_layout->addWidget(label("Приложения, теги и сценарии в одном месте. Каталог хранится локально; интернет для "
+                                 "работы не требуется.",
+                                 "muted"));
+    auto *github = button("Открыть GitHub ↗");
+    auto *issues = button("Сообщить о проблеме ↗");
+    card_layout->addWidget(github);
+    card_layout->addWidget(issues);
+    QObject::connect(github, &QPushButton::clicked, widget,
+                     [] { QDesktopServices::openUrl(QUrl("https://github.com/Lappland-Julia/XLibrary")); });
+    QObject::connect(issues, &QPushButton::clicked, widget,
+                     [] { QDesktopServices::openUrl(QUrl("https://github.com/Lappland-Julia/XLibrary/issues")); });
+    widget->layout()->addWidget(card);
+    widget->layout()->addWidget(label("Технологии и лицензии", "subheading"));
     widget->layout()->addWidget(label(
-        "Qt 6 · C++23 · SQLite\nЛицензия XLibrary: MIT\nQt распространяется по условиям своей лицензии.", "muted"));
+        QString("Qt %1 · C++23 · SQLite\nXLibrary — MIT\nЛицензии сторонних компонентов входят в комплект программы.")
+            .arg(QString::fromLatin1(qVersion())),
+        "muted"));
     static_cast<QVBoxLayout *>(widget->layout())->addStretch();
     return widget;
 }
@@ -172,43 +204,70 @@ QDialog *settings_dialog(const ui_context &context, QWidget *parent) {
     auto *hotkey = static_cast<GlobalHotkey *>(context.parameters.value("hotkey").value<QObject *>());
     auto *dialog = new QDialog(parent);
     dialog->setWindowTitle("Настройки XLibrary");
-    dialog->resize(920, 680);
-    dialog->setMinimumSize(640, 480);
+    prepare_dialog(dialog, context, {960, 700}, {640, 420});
     auto *root = new QVBoxLayout(dialog);
     root->setContentsMargins(24, 20, 24, 20);
     root->setSpacing(16);
     root->addWidget(label("Настройки", "heading"));
+    root->addWidget(label("Оформление, поведение и возможности XLibrary", "muted"));
     auto *body = new QHBoxLayout;
-    auto *categories = new QListWidget;
-    categories->setObjectName("settings_categories");
-    categories->setSpacing(2);
-    categories->setFixedWidth(180);
+    body->setSpacing(16);
+    auto *categories = new QButtonGroup(dialog);
+    auto *navigation = new QWidget;
+    navigation->setObjectName("settings_categories");
+    auto *navigation_layout = new QVBoxLayout(navigation);
+    navigation_layout->setContentsMargins(0, 4, 0, 4);
+    navigation_layout->setSpacing(8);
     auto *pages = new QStackedWidget;
     const QList<QPair<QString, QString>> sections{
         {"Общие", "settings_general"},           {"Внешний вид", "settings_appearance"},
         {"Горячие клавиши", "settings_hotkeys"}, {"Библиотека", "settings_library"},
         {"Плагины", "settings_plugins"},         {"О программе", "settings_about"}};
     for (const auto &section : sections) {
-        auto *item = new QListWidgetItem(section.first, categories);
-        item->setSizeHint({160, 44});
-        pages->addWidget(scroll(context.registry->create(section.second, context, pages)));
+        const auto index = pages->count();
+        auto *item = new SelectionButton(section.first);
+        categories->addButton(item, index);
+        navigation_layout->addWidget(item);
+        auto *holder = new QWidget;
+        auto *page_layout = new QHBoxLayout(holder);
+        page_layout->setContentsMargins(0, 0, 0, 0);
+        auto *contents = context.registry->create(section.second, context, holder);
+        contents->setMaximumWidth(appearance::scaled(*context.settings, 640));
+        page_layout->addWidget(contents, 1);
+        page_layout->addStretch();
+        pages->addWidget(scroll(holder));
     }
+    navigation_layout->addStretch();
+    auto *navigation_scroll = scroll(navigation);
+    navigation_scroll->setMinimumWidth(appearance::scaled(*context.settings, 184));
+    navigation_scroll->setMaximumWidth(appearance::scaled(*context.settings, 220));
     auto *transition = new PageTransition(pages);
-    body->addWidget(categories);
-    body->addWidget(transition, 1);
+    body->addWidget(navigation_scroll);
+    auto *surface = new QFrame;
+    surface->setObjectName("settings_surface");
+    surface->setProperty("card", true);
+    auto *surface_layout = new QVBoxLayout(surface);
+    surface_layout->setContentsMargins(12, 12, 12, 12);
+    surface_layout->addWidget(transition);
+    body->addWidget(surface, 1);
     root->addLayout(body, 1);
-    QObject::connect(categories, &QListWidget::currentRowChanged, pages, [=](int index) {
+    QObject::connect(categories, &QButtonGroup::idClicked, pages, [=](int index) {
         if (pages->currentIndex() == index)
             return;
         pages->setCurrentIndex(index);
         transition->start();
     });
-    categories->setCurrentRow(0);
-    auto *error = label("", "muted");
+    categories->button(0)->setChecked(true);
+    auto *error = label("", "error");
+    error->hide();
     root->addWidget(error);
-    QObject::connect(service, &DesktopService::message, error, &QLabel::setText);
+    auto show_error = [=](const QString &text) {
+        error->setText(text);
+        error->setVisible(!text.isEmpty());
+    };
+    QObject::connect(service, &DesktopService::message, error, show_error);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel);
-    buttons->button(QDialogButtonBox::Save)->setText("Готово");
+    buttons->button(QDialogButtonBox::Save)->setText("Сохранить");
     buttons->button(QDialogButtonBox::Save)->setProperty("primary", true);
     buttons->button(QDialogButtonBox::Cancel)->setText("Отмена");
     root->addWidget(buttons);
@@ -227,8 +286,9 @@ QDialog *settings_dialog(const ui_context &context, QWidget *parent) {
             if (auto *edit = qobject_cast<QKeySequenceEdit *>(control)) {
                 const auto value = edit->keySequence().toString(QKeySequence::PortableText);
                 if (!value.isEmpty() && sequences.contains(value)) {
-                    error->setText("Одинаковые сочетания назначены нескольким действиям.");
-                    categories->setCurrentRow(2);
+                    show_error("Одинаковые сочетания назначены нескольким действиям.");
+                    categories->button(2)->click();
+                    edit->setFocus();
                     return;
                 }
                 if (!value.isEmpty())
@@ -249,8 +309,8 @@ QDialog *settings_dialog(const ui_context &context, QWidget *parent) {
         if (hotkey && !hotkey->set_sequence(QKeySequence::fromString(values.value("shortcuts/global").toString(),
                                                                      QKeySequence::PortableText),
                                             failure)) {
-            error->setText(failure);
-            categories->setCurrentRow(2);
+            show_error(failure);
+            categories->button(2)->click();
             return;
         }
         const bool old_autostart = service->settings.value("behavior/autostart", false).toBool();
@@ -260,7 +320,7 @@ QDialog *settings_dialog(const ui_context &context, QWidget *parent) {
                 QString ignored;
                 hotkey->set_sequence(previous_global, ignored);
             }
-            error->setText(failure);
+            show_error(failure);
             return;
         }
         QVariantMap previous;
@@ -280,7 +340,7 @@ QDialog *settings_dialog(const ui_context &context, QWidget *parent) {
                 QString ignored;
                 desktop_windows::set_autostart(old_autostart, ignored);
             }
-            error->setText("Не удалось сохранить файл настроек.");
+            show_error("Не удалось сохранить файл настроек.");
             return;
         }
         emit service->appearance_changed();

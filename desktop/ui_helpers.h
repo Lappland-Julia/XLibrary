@@ -4,12 +4,15 @@
 #include <QDialog>
 #include <QFrame>
 #include <QLabel>
+#include <QMessageBox>
 #include <QPainter>
 #include <QPushButton>
+#include <QScreen>
 #include <QScrollArea>
 #include <QVariantAnimation>
 #include <QVBoxLayout>
 
+#include "appearance.h"
 #include "ui_registry.h"
 #include "windows_integration.h"
 
@@ -55,8 +58,8 @@ public:
         auto *layout = new QVBoxLayout(this);
         layout->setContentsMargins(0, 0, 0, 0);
         layout->addWidget(contents);
-        animation->setDuration(150);
-        animation->setStartValue(0.45);
+        animation->setDuration(140);
+        animation->setStartValue(0.88);
         animation->setEndValue(1.0);
         animation->setEasingCurve(QEasingCurve::OutCubic);
         connect(animation, &QVariantAnimation::valueChanged, this, [this](const QVariant &value) {
@@ -115,14 +118,39 @@ inline QPushButton *action_button(QAction *action, bool quiet = false, const QSt
 inline QScrollArea *scroll(QWidget *contents) {
     auto *result = new QScrollArea;
     result->setWidgetResizable(true);
-    result->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    result->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     result->setWidget(contents);
     return result;
 }
 inline void field(QVBoxLayout *layout, const QString &name, QWidget *control) {
-    layout->addWidget(label(name, "muted"));
+    auto *caption = label(name, "muted");
+    caption->setBuddy(control);
+    if (control->accessibleName().isEmpty())
+        control->setAccessibleName(name);
+    layout->addWidget(caption);
     layout->addWidget(control);
     layout->addSpacing(8);
+}
+inline void prepare_dialog(QDialog *dialog, const ui_context &context, const QSize &preferred,
+                           const QSize &minimum = QSize(360, 240)) {
+    const auto available = dialog->screen()->availableGeometry().size() - QSize(32, 64);
+    dialog->setSizeGripEnabled(true);
+    dialog->setMinimumSize(QSize(appearance::scaled(*context.settings, minimum.width()),
+                                 appearance::scaled(*context.settings, minimum.height()))
+                               .boundedTo(available));
+    dialog->resize(QSize(appearance::scaled(*context.settings, preferred.width()),
+                         appearance::scaled(*context.settings, preferred.height()))
+                       .boundedTo(available));
+}
+inline bool confirm(QWidget *parent, const QString &title, const QString &text,
+                    const QString &accept_text = QStringLiteral("Удалить")) {
+    QMessageBox dialog(QMessageBox::Question, title, text, QMessageBox::Yes | QMessageBox::Cancel, parent);
+    dialog.setTextFormat(Qt::PlainText);
+    dialog.button(QMessageBox::Yes)->setText(accept_text);
+    dialog.button(QMessageBox::Cancel)->setText("Отмена");
+    dialog.setDefaultButton(QMessageBox::Cancel);
+    dialog.setEscapeButton(QMessageBox::Cancel);
+    return dialog.exec() == QMessageBox::Yes;
 }
 inline void open_dialog(const QString &id, ui_context context) {
     if (auto *existing = context.window->findChild<QWidget *>(id, Qt::FindDirectChildrenOnly)) {
@@ -133,6 +161,20 @@ inline void open_dialog(const QString &id, ui_context context) {
     }
     auto *widget = context.registry->create(id, context, context.window);
     if (auto *dialog = qobject_cast<QDialog *>(widget)) {
+        // Ограничение действует и для заменяемых плагинами диалогов.
+        const auto available = dialog->screen()->availableGeometry().size() - QSize(32, 64);
+        const auto size_key = "dialogs/" + id + "/size";
+        const auto saved = context.settings->value(size_key).toSize();
+        if (saved.isValid() && !saved.isEmpty())
+            dialog->resize(appearance::scaled(*context.settings, saved.width()),
+                           appearance::scaled(*context.settings, saved.height()));
+        dialog->setMinimumSize(dialog->minimumSize().boundedTo(available));
+        dialog->resize(dialog->size().boundedTo(available));
+        dialog->setSizeGripEnabled(true);
+        QObject::connect(dialog, &QDialog::finished, dialog, [dialog, settings = context.settings, size_key] {
+            const auto scale = appearance::scaled(*settings, 100) / 100.0;
+            settings->setValue(size_key, QSize(qRound(dialog->width() / scale), qRound(dialog->height() / scale)));
+        });
         dialog->setAttribute(Qt::WA_DeleteOnClose);
         dialog->setWindowModality(Qt::WindowModal);
         dialog->show();

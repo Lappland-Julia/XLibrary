@@ -3,6 +3,7 @@
 #include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QGridLayout>
 #include <QHeaderView>
 #include <QLineEdit>
 #include <QRegularExpression>
@@ -33,7 +34,7 @@ QDialog *application_editor(const ui_context &context, QWidget *parent) {
     const auto record = context.parameters.value("record").value<app_record>();
     auto *dialog = new QDialog(parent);
     dialog->setWindowTitle(record.id ? "Изменить приложение" : "Добавить приложение");
-    dialog->resize(640, 700);
+    prepare_dialog(dialog, context, {640, 700}, {420, 320});
     auto *root = new QVBoxLayout(dialog);
     root->setContentsMargins(24, 24, 24, 24);
     root->addWidget(label(dialog->windowTitle(), "heading"));
@@ -66,11 +67,10 @@ QDialog *application_editor(const ui_context &context, QWidget *parent) {
     auto *favorite = new QCheckBox("В избранном");
     favorite->setChecked(record.favorite);
     layout->addWidget(favorite);
-    auto *error = label("");
-    error->setStyleSheet("color: #C88888;");
-    layout->addWidget(error);
+    auto *error = label("", "error");
     layout->addStretch();
     root->addWidget(scroll(form), 1);
+    root->addWidget(error);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Cancel | QDialogButtonBox::Save);
     buttons->button(QDialogButtonBox::Cancel)->setText("Отмена");
     auto *save = buttons->button(QDialogButtonBox::Save);
@@ -156,17 +156,22 @@ QDialog *tag_editor(const ui_context &context, QWidget *parent) {
     const auto old_name = context.parameters.value("tag").toString();
     auto *dialog = new QDialog(parent);
     dialog->setWindowTitle(old_name.isEmpty() ? "Добавить тег" : "Изменить тег");
-    dialog->resize(420, 220);
+    prepare_dialog(dialog, context, {440, 260}, {320, 220});
     auto *layout = new QVBoxLayout(dialog);
     layout->setContentsMargins(24, 24, 24, 24);
     layout->addWidget(label(dialog->windowTitle(), "subheading"));
     auto *name = new QLineEdit(old_name);
+    name->setMaxLength(64);
+    name->setAccessibleName("Название тега");
     name->setPlaceholderText("Название тега");
     layout->addWidget(name);
-    auto *error = label("", "muted");
+    layout->addWidget(label("До 64 символов, без пробелов, запятых и #.", "muted"));
+    auto *error = label("", "error");
     layout->addWidget(error);
+    layout->addStretch();
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel);
     buttons->button(QDialogButtonBox::Save)->setText("Сохранить");
+    buttons->button(QDialogButtonBox::Save)->setProperty("primary", true);
     buttons->button(QDialogButtonBox::Cancel)->setText("Отмена");
     layout->addWidget(buttons);
     QObject::connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
@@ -174,6 +179,7 @@ QDialog *tag_editor(const ui_context &context, QWidget *parent) {
         const auto tag = name->text().trimmed();
         if (!valid_tag_name(tag)) {
             error->setText("До 64 символов, без пробелов, запятых и #.");
+            name->setFocus();
             return;
         }
         error->clear();
@@ -203,24 +209,30 @@ QDialog *scenario_editor(const ui_context &context, QWidget *parent) {
     const auto record = context.parameters.value("scenario").value<scenario_record>();
     auto *dialog = new QDialog(parent);
     dialog->setWindowTitle(record.id ? "Изменить сценарий" : "Создать сценарий");
-    dialog->resize(760, 620);
+    prepare_dialog(dialog, context, {820, 680}, {480, 420});
     auto *root = new QVBoxLayout(dialog);
     root->setContentsMargins(24, 24, 24, 24);
     root->addWidget(label(dialog->windowTitle(), "heading"));
+    auto *form = new QWidget;
+    auto *form_layout = new QVBoxLayout(form);
+    form_layout->setContentsMargins(0, 8, 0, 8);
     auto *name = new QLineEdit(record.name);
+    name->setAccessibleName("Название сценария");
     name->setMaxLength(128);
-    root->addWidget(label("Название сценария", "muted"));
-    root->addWidget(name);
-    root->addSpacing(16);
-    root->addWidget(label("Приложения · задержка перед запуском", "muted"));
+    form_layout->addWidget(label("Название сценария", "muted"));
+    form_layout->addWidget(name);
+    form_layout->addSpacing(16);
+    form_layout->addWidget(label("Приложения · задержка перед запуском", "muted"));
     auto *table = new QTableWidget(0, 3);
     table->setHorizontalHeaderLabels({"Включено", "Приложение", "Задержка, с"});
     table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
-    table->horizontalHeader()->resizeSection(0, 95);
-    table->horizontalHeader()->resizeSection(2, 125);
+    table->horizontalHeader()->resizeSection(0, appearance::scaled(*context.settings, 95));
+    table->horizontalHeader()->resizeSection(2, appearance::scaled(*context.settings, 140));
     table->verticalHeader()->hide();
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
     table->setSelectionMode(QAbstractItemView::SingleSelection);
+    table->setAccessibleName("Шаги сценария");
+    table->setMinimumHeight(appearance::scaled(*context.settings, 120));
     auto add_step = [=](const scenario_step &step) {
         const auto row = table->rowCount();
         table->insertRow(row);
@@ -232,28 +244,30 @@ QDialog *scenario_editor(const ui_context &context, QWidget *parent) {
         apps->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
         for (const auto &application : service->model.applications())
             apps->addItem(application.name, application.id);
+        apps->setAccessibleName("Приложение шага " + QString::number(row + 1));
         apps->setCurrentIndex(qMax(0, apps->findData(step.application_id)));
         table->setCellWidget(row, 1, apps);
         auto *delay = new QSpinBox;
         delay->setRange(0, 3600);
         delay->setValue(step.delay_ms / 1000);
+        delay->setAccessibleName("Задержка перед шагом " + QString::number(row + 1) + ", секунд");
         table->setCellWidget(row, 2, delay);
-        table->setRowHeight(row, 52);
+        table->setRowHeight(row, qMax(apps->sizeHint().height(), delay->sizeHint().height()) + 8);
     };
     for (const auto &step : record.steps)
         add_step(step);
-    root->addWidget(table, 1);
-    auto *tools = new QHBoxLayout;
+    form_layout->addWidget(table, 1);
+    auto *tools = new QGridLayout;
     auto *add = button("+ Добавить приложение");
     auto *remove = button("Удалить шаг");
     auto *up = button("Выше");
     auto *down = button("Ниже");
-    tools->addWidget(add);
-    tools->addWidget(remove);
-    tools->addStretch();
-    tools->addWidget(up);
-    tools->addWidget(down);
-    root->addLayout(tools);
+    tools->addWidget(add, 0, 0);
+    tools->addWidget(remove, 0, 1);
+    tools->addWidget(up, 1, 0);
+    tools->addWidget(down, 1, 1);
+    form_layout->addLayout(tools);
+    root->addWidget(scroll(form), 1);
     auto read_steps = [=] {
         QVector<scenario_step> steps;
         for (int row = 0; row < table->rowCount(); ++row) {
@@ -287,14 +301,15 @@ QDialog *scenario_editor(const ui_context &context, QWidget *parent) {
     };
     QObject::connect(up, &QPushButton::clicked, dialog, [=] { move_step(-1); });
     QObject::connect(down, &QPushButton::clicked, dialog, [=] { move_step(1); });
-    auto *error = label("", "muted");
+    auto *error = label("", "error");
     root->addWidget(error);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel);
     buttons->button(QDialogButtonBox::Save)->setText("Сохранить");
     buttons->button(QDialogButtonBox::Save)->setProperty("primary", true);
     buttons->button(QDialogButtonBox::Cancel)->setText("Отмена");
-    auto *save_and_run = buttons->addButton("Запустить сценарий", QDialogButtonBox::ActionRole);
-    save_and_run->setProperty("primary", true);
+    auto *save_and_run = button("Сохранить и запустить сценарий");
+    save_and_run->setAutoDefault(false);
+    root->addWidget(save_and_run);
     root->addWidget(buttons);
     QObject::connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
     auto save_scenario = [=](bool run) {
