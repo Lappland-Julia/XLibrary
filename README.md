@@ -61,7 +61,7 @@ Press <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>Space</kbd> to bring up the librar
 
 XLibrary is built with **C++23**, **Qt 6 Widgets**, and **SQLite**. It currently targets **Windows 10 and 11**. The current application interface is in Russian.
 
-Building from source requires a C++23 compiler, **CMake 3.21+**, and **Qt 6.5+** with the Widgets, Concurrent, and Network modules. CMake downloads SQLite during the initial configuration. Setup documentation will expand as the project approaches a release.
+Building from source requires a C++23 compiler, **CMake 3.21+**, and **Qt 6.5+** with the Widgets, Concurrent, and Network modules. CMake downloads SQLite during the initial configuration. See [Building and releasing on Windows](BUILDING.md) for CLion setup, MSVC/MinGW builds, portable packages, installers, and release verification.
 
 Planned work includes a compact launcher mode, further search improvements, and extensibility. These are development directions rather than a release schedule.
 

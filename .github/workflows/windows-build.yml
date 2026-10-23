@@ -86,42 +86,97 @@ jobs:
           cmake --build build --config $env:BUILD_CONFIGURATION --parallel 2
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Package application
-        if: matrix.compiler == 'msvc' && matrix.configuration == 'Release'
+      - name: Verify build does not deploy dependencies
         run: |
-          cmake --install build --config Release --prefix "$env:GITHUB_WORKSPACE/dist"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $dlls = @(Get-ChildItem -LiteralPath build -Filter '*.dll' -Recurse -File)
+          if ($dlls.Count -ne 0) { throw 'Ordinary Build unexpectedly deployed DLLs.' }
+          if ((Test-Path dist) -or (Test-Path release)) { throw 'Ordinary Build created a distribution.' }
 
-          # App-local CRT позволяет запускать portable-пакет без установки redist.
-          $crt = Join-Path $env:VCToolsRedistDir 'x64/Microsoft.VC143.CRT'
-          $runtime_files = @(Get-ChildItem -LiteralPath $crt -Filter '*.dll' -ErrorAction Stop)
-          if ($runtime_files.Count -eq 0) { throw "No runtime DLLs found in $crt" }
-          $runtime_files | Copy-Item -Destination dist -ErrorAction Stop
-          Copy-Item LICENSE dist -ErrorAction Stop
-
-          $commit = git rev-parse HEAD
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $version = Select-String -LiteralPath build/CMakeCache.txt -Pattern '^CMAKE_PROJECT_VERSION:STATIC=(.+)$'
-          if (-not $version) { throw 'Project version is missing from the CMake cache.' }
-          @{
-            version = $version.Matches[0].Groups[1].Value
-            commit = $commit
-            configuration = 'Release'
-            compiler = 'MSVC'
-            compiler_version = $env:VCToolsVersion
-            qt_version = $env:QT_VERSION
-            run_url = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
-          } | ConvertTo-Json | Set-Content dist/build-info.json -Encoding utf8
-
-      - name: Verify packaged application
-        if: matrix.compiler == 'msvc' && matrix.configuration == 'Release'
-        run: ./.github/scripts/check_package.ps1 -PackagePath ./dist
-
-      - name: Upload portable application
-        if: matrix.compiler == 'msvc' && matrix.configuration == 'Release'
+      - name: Upload failure diagnostics
+        if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: XLibrary-windows-x64-release-${{ github.sha }}
+          name: diagnostics-${{ matrix.compiler }}-${{ matrix.configuration }}-${{ github.run_attempt }}
+          path: |
+            build/CMakeCache.txt
+            build/CMakeFiles/CMakeConfigureLog.yaml
+            build/package-check/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  windows-package:
+    name: package-${{ matrix.compiler }}-Release
+    needs: windows-build
+    runs-on: windows-2022
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: msvc
+            qt_arch: win64_msvc2022_64
+            tools: ''
+          - compiler: mingw
+            qt_arch: win64_mingw
+            tools: tools_mingw1310,qt.tools.win64_mingw1310
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up MSVC
+        if: matrix.compiler == 'msvc'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        with:
+          arch: x64
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: ${{ matrix.qt_arch }}
+          tools: ${{ matrix.tools }}
+          cache: true
+
+      - name: Configure Release package build
+        env:
+          BUILD_COMPILER: ${{ matrix.compiler }}
+        run: |
+          $arguments = @('-S', '.', '-B', 'build', '-DXLIBRARY_NATIVE_CPU=OFF')
+          if ($env:BUILD_COMPILER -eq 'msvc') {
+            $arguments += @('-G', 'Visual Studio 17 2022', '-A', 'x64')
+          } else {
+            $toolchain = Join-Path $env:IQTA_TOOLS 'mingw1310_64/bin'
+            $arguments += @('-G', 'Ninja', '-DCMAKE_BUILD_TYPE=Release',
+              "-DCMAKE_C_COMPILER=$toolchain/gcc.exe", "-DCMAKE_CXX_COMPILER=$toolchain/g++.exe")
+          }
+          cmake @arguments
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build and verify portable distribution without installer
+        run: ./packaging/build_release.ps1 -BuildPath build -OutputPath dist
+
+      - name: Verify extracted ZIP and checksum
+        env:
+          BUILD_COMPILER: ${{ matrix.compiler }}
+        run: |
+          $zip = @(Get-ChildItem -LiteralPath dist -Filter '*.zip' -File)
+          if ($zip.Count -ne 1) { throw 'Expected one portable archive.' }
+          $expected = (Get-Content -LiteralPath dist/SHA256SUMS.txt -Raw).Trim()
+          $actual = "$((Get-FileHash -LiteralPath $zip[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($zip[0].Name)"
+          if ($expected -ne $actual) { throw 'Portable archive checksum mismatch.' }
+          Expand-Archive -LiteralPath $zip[0].FullName -DestinationPath build/extracted
+          $package = Join-Path 'build/extracted' $zip[0].BaseName
+          ./.github/scripts/check_package.ps1 -PackagePath $package -Compiler $env:BUILD_COMPILER
+
+      - name: Upload portable distribution
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: XLibrary-windows-x64-${{ matrix.compiler }}-${{ github.sha }}
           path: dist/
           if-no-files-found: error
           retention-days: 14
@@ -130,7 +185,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: diagnostics-${{ matrix.compiler }}-${{ matrix.configuration }}-${{ github.run_attempt }}
+          name: package-diagnostics-${{ matrix.compiler }}-${{ github.run_attempt }}
           path: |
             build/CMakeCache.txt
             build/CMakeFiles/CMakeConfigureLog.yaml

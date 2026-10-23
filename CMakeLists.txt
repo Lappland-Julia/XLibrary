@@ -156,17 +156,9 @@ if(MINGW)
             COMPILE_OPTIONS --use-temp-file)
 endif()
 
-# Проводник не получает PATH среды разработки, поэтому DLL нужны рядом с exe.
-get_filename_component(xlibrary_compiler_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
-add_custom_command(TARGET XLibrary POST_BUILD
-        COMMAND "${CMAKE_COMMAND}" -E env
-        "PATH=${xlibrary_compiler_dir};$<TARGET_FILE_DIR:Qt6::qmake>;$ENV{PATH}"
-        "$<TARGET_FILE:Qt6::windeployqt>"
-        "$<IF:$<CONFIG:Debug>,--debug,--release>" --compiler-runtime
-        --no-translations "$<TARGET_FILE:XLibrary>"
-        COMMENT "Deploying Qt and compiler runtime next to XLibrary.exe"
-        VERBATIM
-)
+# Метаданные выбранного toolchain нужны только явной упаковке.
+configure_file(packaging/build_config.json.in packaging-config.json @ONLY)
+
 if(MSVC)
     target_compile_options(XLibrary PRIVATE /utf-8 /W4)
 else()
@@ -174,8 +166,10 @@ else()
 endif()
 
 install(TARGETS XLibrary RUNTIME DESTINATION .)
-qt_generate_deploy_app_script(TARGET XLibrary OUTPUT_SCRIPT xlibrary_deploy_script NO_UNSUPPORTED_PLATFORM_ERROR)
-install(SCRIPT ${xlibrary_deploy_script})
+# Qt развёртывается только при install; CRT добавляет упаковщик из выбранного toolchain.
+qt_generate_deploy_app_script(TARGET XLibrary OUTPUT_SCRIPT xlibrary_deploy_script
+        NO_TRANSLATIONS NO_COMPILER_RUNTIME)
+install(SCRIPT "${xlibrary_deploy_script}")
 install(FILES LICENSE DESTINATION .)
 
 # ------------------------------------------------------------

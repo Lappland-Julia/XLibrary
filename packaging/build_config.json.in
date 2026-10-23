@@ -1,0 +1,8 @@
+{
+  "compiler_id": "@CMAKE_CXX_COMPILER_ID@",
+  "compiler_version": "@CMAKE_CXX_COMPILER_VERSION@",
+  "compiler": "@CMAKE_CXX_COMPILER@",
+  "compiler_architecture": "@CMAKE_CXX_COMPILER_ARCHITECTURE_ID@",
+  "pointer_size": "@CMAKE_SIZEOF_VOID_P@",
+  "qt_version": "@Qt6_VERSION@"
+}

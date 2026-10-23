@@ -43,6 +43,9 @@ int main(int argc, char *argv[]) {
         QLockFile instance_lock(profile + "/instance.lock");
         instance_lock.setStaleLockTime(0);
         if (!instance_lock.tryLock(0)) {
+            if (instance_lock.error() != QLockFile::LockFailedError)
+                throw std::runtime_error(
+                    "Не удалось записать файл блокировки профиля XLibrary. Проверьте права доступа.");
             QLocalSocket socket;
             socket.connectToServer(server_name);
             if (socket.waitForConnected(1500)) {
@@ -62,6 +65,8 @@ int main(int argc, char *argv[]) {
         // Portable и проверка запуска используют свой каталог без подмены окружения дочерних приложений.
         const auto database_path = (portable || check_startup) ? profile + "/xlibrary.db" : QString{};
         DesktopService service(nullptr, profile, database_path);
+        if (!service.settings.isWritable())
+            throw std::runtime_error("Нет прав на запись настроек XLibrary. Выберите доступную для записи папку.");
         MainWindow window(service);
         if (check_startup) {
             QObject::connect(&service, &DesktopService::catalog_changed, &application, [&] {

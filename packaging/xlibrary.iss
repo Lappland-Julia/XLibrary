@@ -8,6 +8,10 @@
   #error OutputDir must point to the release directory
 #endif
 
+#ifndef Compiler
+  #error Compiler must identify the configured toolchain
+#endif
+
 [Setup]
 AppId={{2B7F5CF1-ABF4-4992-899D-B0A17F8DA51E}
 AppName=XLibrary
@@ -25,7 +29,7 @@ MinVersion=10.0
 LicenseFile={#PackageDir}\LICENSE
 SetupIconFile=..\assets\xlibrary.ico
 OutputDir={#OutputDir}
-OutputBaseFilename=XLibrary-{#AppVersion}-pre-release-windows-x64-setup
+OutputBaseFilename=XLibrary-{#AppVersion}-pre-release-windows-x64-{#Compiler}-setup
 VersionInfoVersion={#AppVersion}.0
 Compression=lzma2
 SolidCompression=yes
@@ -41,6 +45,9 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+
+[InstallDelete]
+Type: files; Name: "{app}\portable.flag"
 
 [Files]
 Source: "{#PackageDir}\*"; DestDir: "{app}"; Excludes: "portable.flag,data\*"; Flags: ignoreversion recursesubdirs createallsubdirs
