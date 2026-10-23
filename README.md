@@ -30,6 +30,10 @@ An app can belong to more than one part of your day. Give your browser both `#wo
 
 > **Under active development.** Features and interfaces are still evolving. Early feedback and contributions are welcome.
 
+<p align="center">
+  <h3 align="center"><a href="https://github.com/Lappland-Julia/XLibrary/releases">Download Latest Release</a></h3>
+</p>
+
 ## Features
 
 | | What you can do |
