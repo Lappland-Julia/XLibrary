@@ -1,0 +1,12 @@
+.git
+.idea
+.codex
+.agents
+local-docs
+build
+build-*
+cmake-build-*
+dist
+release
+CMakeUserPresets.json
+**/__pycache__
