@@ -345,15 +345,26 @@ QWidget *discovery_status(const ui_context &context, QWidget *parent) {
     auto *panel = new QFrame(container);
     auto *panel_reveal = new AnimatedReveal(panel);
     container_layout->addWidget(panel_reveal);
-    auto *details_notice = new NotificationBanner(*context.settings, 8, 30000);
+    auto *details_notice = new NotificationBanner(*context.settings, 0, 15000);
     container_layout->addWidget(details_notice);
     QObject::connect(service, &DesktopService::appearance_changed, details_notice,
                      &NotificationBanner::refresh_appearance);
     const auto update_details = [=] {
-        if (service->discovery_report().isEmpty())
+        if (service->is_discovering())
+            return;
+        if (service->discovery_report().isEmpty()) {
             details_notice->dismiss();
-        else
-            details_notice->show_message(QCoreApplication::translate("XLibrary", "Last scan details…"), true);
+            return;
+        }
+        panel_reveal->set_expanded(false);
+        QString description;
+        const auto &progress = service->discovery_status();
+        if (progress.percent >= 90)
+            description = QCoreApplication::translate("XLibrary", "Candidates processed: %1 of %2")
+                              .arg(progress.processed)
+                              .arg(progress.total);
+        details_notice->show_message(QCoreApplication::translate("XLibrary", "Scan result"), description,
+                                     QCoreApplication::translate("XLibrary", "Last scan details…"));
     };
     QObject::connect(service, &DesktopService::discovery_report_changed, container, update_details);
     update_details();
@@ -403,7 +414,7 @@ QWidget *discovery_status(const ui_context &context, QWidget *parent) {
     const auto update = [=] {
         const auto &progress = service->discovery_status();
         const bool active = service->is_discovering();
-        if (!active && progress.percent != 100) {
+        if (!active) {
             panel_reveal->set_expanded(false);
             return;
         }
@@ -425,14 +436,14 @@ QWidget *discovery_status(const ui_context &context, QWidget *parent) {
         cancel->setText(service->is_cancelling_discovery() ? QCoreApplication::translate("XLibrary", "Cancelling…")
                                                            : QCoreApplication::translate("XLibrary", "Cancel"));
         panel_reveal->set_expanded(true);
-        if (!active) {
-            QTimer::singleShot(1200, panel, [=] {
-                if (!service->is_discovering())
-                    panel_reveal->set_expanded(false);
-            });
-        }
     };
-    QObject::connect(service, &DesktopService::discovery_changed, panel, update);
+    QObject::connect(service, &DesktopService::discovery_changed, panel, [=] {
+        if (service->is_discovering())
+            details_notice->dismiss();
+        else
+            update_details();
+        update();
+    });
     QObject::connect(service, &DesktopService::discovery_progress_changed, panel, update);
     update();
     return container;

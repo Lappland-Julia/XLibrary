@@ -4,6 +4,10 @@
 <context>
     <name>XLibrary</name>
     <message>
+        <source>Scan result</source>
+        <translation>Результат сканирования</translation>
+    </message>
+    <message>
         <source>Notification display time</source>
         <translation>Время показа уведомления</translation>
     </message>

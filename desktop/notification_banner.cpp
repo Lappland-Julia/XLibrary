@@ -17,7 +17,7 @@ NotificationBanner::NotificationBanner(QSettings &settings, int spacing, int dur
     row->setSpacing(10);
     message_label->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::LinksAccessibleByMouse |
                                            Qt::LinksAccessibleByKeyboard);
-    row->addWidget(message_icon, 0, Qt::AlignVCenter);
+    row->addWidget(message_icon, 0, Qt::AlignTop);
     row->addWidget(message_label, 1);
     dismiss_button->setObjectName("notification_dismiss");
     dismiss_button->setCursor(Qt::PointingHandCursor);
@@ -54,16 +54,30 @@ void NotificationBanner::refresh_appearance() {
     const auto close_size = appearance::scaled(settings, 28);
     dismiss_button->setFixedSize(close_size, close_size);
     progress->setFixedHeight(appearance::scaled(settings, 4));
-    message_label->setTextFormat(link ? Qt::RichText : Qt::PlainText);
-    message_label->setText(link ? QString("<a href=\"report\" style=\"color: %1;\">%2</a>")
-                                      .arg(dark ? "#EBEBED" : "#22252A", message.toHtmlEscaped())
-                                : message);
+    if (description.isEmpty() && link_text.isEmpty()) {
+        message_label->setTextFormat(Qt::PlainText);
+        message_label->setText(message);
+        return;
+    }
+    auto text = QString("<span style=\"font-weight: 600;\">%1</span>").arg(message.toHtmlEscaped());
+    if (!description.isEmpty())
+        text += QString("<p style=\"margin-top: 4px; margin-bottom: 0; color: %1; font-size: %2px;\">%3</p>")
+                    .arg(color.name())
+                    .arg(appearance::scaled(settings, 12))
+                    .arg(description.toHtmlEscaped().replace('\n', "<br>"));
+    if (!link_text.isEmpty())
+        text += QString("<p style=\"margin-top: 6px; margin-bottom: 0;\"><a href=\"report\" "
+                        "style=\"color: %1;\">%2</a></p>")
+                    .arg(dark ? "#EBEBED" : "#22252A", link_text.toHtmlEscaped());
+    message_label->setTextFormat(Qt::RichText);
+    message_label->setText(text);
 }
 
-void NotificationBanner::show_message(const QString &text, bool as_link) {
+void NotificationBanner::show_message(const QString &text, const QString &description, const QString &link_text) {
     countdown->stop();
     message = text;
-    link = as_link;
+    this->description = description;
+    this->link_text = link_text;
     progress->setValue(0);
     refresh_appearance();
     set_expanded(true);

@@ -70,12 +70,18 @@ QIcon appearance::icon(const QString &name, const QColor &color) {
             painter.drawEllipse(QPointF(x, 12), 1, 1);
     } else if (name == "refresh") {
         QPainterPath path;
-        path.arcMoveTo(QRectF(4, 4, 16, 16), 45);
-        const auto tip = path.currentPosition();
-        path.arcTo(QRectF(4, 4, 16, 16), 45, 270);
-        path.moveTo(tip - QPointF(5, 0));
-        path.lineTo(tip);
-        path.lineTo(tip - QPointF(0, 5));
+        path.moveTo(3, 10);
+        path.cubicTo(3, 6, 6, 3, 10, 3);
+        path.cubicTo(14, 3, 17, 5, 20, 8);
+        path.moveTo(20, 3);
+        path.lineTo(20, 8);
+        path.lineTo(15, 8);
+        path.moveTo(21, 14);
+        path.cubicTo(21, 18, 18, 21, 14, 21);
+        path.cubicTo(10, 21, 7, 19, 4, 16);
+        path.moveTo(4, 21);
+        path.lineTo(4, 16);
+        path.lineTo(9, 16);
         painter.drawPath(path);
     } else if (name == "trash") {
         painter.drawLine(QPointF(4, 6), QPointF(20, 6));
