@@ -9,6 +9,7 @@
 #include <QUrl>
 
 #include "desktop_service.h"
+#include "localization.h"
 #include "platform_integration.h"
 #include "selection_button.h"
 #include "settings_view.h"
@@ -46,45 +47,69 @@ void choices(QWidget *page, QSettings &settings, const QString &key, const QStri
 }
 
 QWidget *general(const ui_context &context, QWidget *) {
-    auto *widget = page("Поведение приложения");
+    auto *widget = page(QCoreApplication::translate("XLibrary", "Application behavior"));
     auto &settings = *context.settings;
-    checkbox(widget, settings, "behavior/autostart", "Запускать при входе в систему", false);
-    checkbox(widget, settings, "behavior/close_to_tray", "Сворачивать в трей при закрытии", true);
-    choices(widget, settings, "behavior/after_launch", "После запуска приложения",
-            {{"Оставить окно открытым", "keep"}, {"Свернуть окно", "minimize"}, {"Скрыть в трей", "hide"}}, "keep");
-    choices(widget, settings, "behavior/relaunch", "Повторный запуск",
-            {{"Переключиться на открытое окно", "activate"}, {"Открыть новый экземпляр", "new"}}, "activate");
-    choices(widget, settings, "behavior/startup", "При запуске",
-            {{"Показать библиотеку", "show"}, {"Запустить в трее", "tray"}}, "show");
+    choices(
+        widget, settings, "interface/language", QCoreApplication::translate("XLibrary", "Interface language"),
+        {{QCoreApplication::translate("XLibrary", "System language"), "system"}, {"English", "en"}, {"Русский", "ru"}},
+        "system");
+    widget->layout()->addWidget(label(
+        QCoreApplication::translate("XLibrary", "Language changes take effect after restarting XLibrary."), "muted"));
+    checkbox(widget, settings, "behavior/autostart", QCoreApplication::translate("XLibrary", "Start at login"), false);
+    checkbox(widget, settings, "behavior/close_to_tray",
+             QCoreApplication::translate("XLibrary", "Minimize to tray on close"), true);
+    choices(widget, settings, "behavior/after_launch",
+            QCoreApplication::translate("XLibrary", "After launching an application"),
+            {{QCoreApplication::translate("XLibrary", "Keep the window open"), "keep"},
+             {QCoreApplication::translate("XLibrary", "Minimize the window"), "minimize"},
+             {QCoreApplication::translate("XLibrary", "Hide to tray"), "hide"}},
+            "keep");
+    choices(widget, settings, "behavior/relaunch", QCoreApplication::translate("XLibrary", "Launch again"),
+            {{QCoreApplication::translate("XLibrary", "Switch to the open window"), "activate"},
+             {QCoreApplication::translate("XLibrary", "Open a new instance"), "new"}},
+            "activate");
+    choices(widget, settings, "behavior/startup", QCoreApplication::translate("XLibrary", "At startup"),
+            {{QCoreApplication::translate("XLibrary", "Show the library"), "show"},
+             {QCoreApplication::translate("XLibrary", "Start in the tray"), "tray"}},
+            "show");
     static_cast<QVBoxLayout *>(widget->layout())->addStretch();
     return widget;
 }
 
 QWidget *appearance_page(const ui_context &context, QWidget *) {
-    auto *widget = page("Оформление");
+    auto *widget = page(QCoreApplication::translate("XLibrary", "Appearance"));
     auto &settings = *context.settings;
-    choices(widget, settings, "appearance/theme", "Тема",
-            {{"Тёмная", "dark"}, {"Светлая", "light"}, {"Системная", "system"}}, "dark");
+    choices(widget, settings, "appearance/theme", QCoreApplication::translate("XLibrary", "Theme"),
+            {{QCoreApplication::translate("XLibrary", "Dark"), "dark"},
+             {QCoreApplication::translate("XLibrary", "Light"), "light"},
+             {QCoreApplication::translate("XLibrary", "System"), "system"}},
+            "dark");
 #ifdef Q_OS_WIN
-    checkbox(widget, settings, "appearance/glass", "Системный материал рамки Windows 11", false);
+    checkbox(widget, settings, "appearance/glass",
+             QCoreApplication::translate("XLibrary", "Windows 11 system window material"), false);
     widget->layout()->addWidget(
-        label("В Windows 10 используется обычная непрозрачная рамка. Список и текст остаются непрозрачными.", "muted"));
+        label(QCoreApplication::translate("XLibrary",
+                                          "Windows 10 uses a standard opaque frame. The list and text remain opaque."),
+              "muted"));
 #endif
-    choices(widget, settings, "appearance/text_scale", "Размер текста",
+    choices(widget, settings, "appearance/text_scale", QCoreApplication::translate("XLibrary", "Text size"),
             {{"100%", 100}, {"125%", 125}, {"150%", 150}, {"200%", 200}}, 100);
     widget->layout()->addWidget(
-        label("Короткие плавные переходы учитывают доступные системные настройки анимации.", "muted"));
+        label(QCoreApplication::translate("XLibrary",
+                                          "Short, smooth transitions follow available system animation settings."),
+              "muted"));
     static_cast<QVBoxLayout *>(widget->layout())->addStretch();
     return widget;
 }
 
 QWidget *hotkeys(const ui_context &context, QWidget *) {
-    auto *widget = page("Горячие клавиши");
+    auto *widget = page(QCoreApplication::translate("XLibrary", "Keyboard shortcuts"));
     const QList<QStringList> values{
-        {"shortcuts/global", "Показать библиотеку из любого приложения", desktop_platform::default_global_shortcut()},
-        {"shortcuts/search", "Поиск в библиотеке", "Ctrl+K"},
-        {"shortcuts/add", "Добавить приложение", "Ctrl+N"},
-        {"shortcuts/settings", "Открыть настройки", "Ctrl+,"}};
+        {"shortcuts/global", QCoreApplication::translate("XLibrary", "Show the library from any application"),
+         desktop_platform::default_global_shortcut()},
+        {"shortcuts/search", QCoreApplication::translate("XLibrary", "Search the library"), "Ctrl+K"},
+        {"shortcuts/add", QCoreApplication::translate("XLibrary", "Add application"), "Ctrl+N"},
+        {"shortcuts/settings", QCoreApplication::translate("XLibrary", "Open settings"), "Ctrl+,"}};
     for (const auto &value : values) {
         auto *control = new QKeySequenceEdit(QKeySequence::fromString(
             context.settings->value(value[0], value[2]).toString(), QKeySequence::PortableText));
@@ -95,55 +120,72 @@ QWidget *hotkeys(const ui_context &context, QWidget *) {
     }
 #ifdef Q_OS_LINUX
     widget->layout()->addWidget(
-        label("В Wayland назначьте сочетание в настройках рабочего стола для команды XLibrary. "
-              "Она открывает уже запущенную библиотеку. Встроенное глобальное сочетание доступно в X11.",
+        label(QCoreApplication::translate("XLibrary",
+                                          "On Wayland, assign a desktop shortcut to the XLibrary command. It opens "
+                                          "the running library. The built-in global shortcut is available on X11."),
               "muted"));
 #endif
-    widget->layout()->addWidget(label("Пустое поле отключает сочетание. Enter запускает выбранное приложение; ↑↓ "
-                                      "выбирают строку. Escape очищает поиск.",
-                                      "muted"));
+    widget->layout()->addWidget(label(
+        QCoreApplication::translate("XLibrary", "An empty field disables the shortcut. Enter launches the selected "
+                                                "application; ↑↓ selects a row. Escape clears the search."),
+        "muted"));
     static_cast<QVBoxLayout *>(widget->layout())->addStretch();
     return widget;
 }
 
 QWidget *library_settings(const ui_context &context, QWidget *) {
     auto *service = static_cast<DesktopService *>(context.service);
-    auto *widget = page("Источники приложений");
+    auto *widget = page(QCoreApplication::translate("XLibrary", "Application sources"));
 #ifdef Q_OS_WIN
-    checkbox(widget, *context.settings, "sources/registry", "Зарегистрированные приложения Windows", true);
-    checkbox(widget, *context.settings, "sources/start_menu", "Ярлыки меню «Пуск»", true);
+    checkbox(widget, *context.settings, "sources/registry",
+             QCoreApplication::translate("XLibrary", "Registered Windows applications"), true);
+    checkbox(widget, *context.settings, "sources/start_menu",
+             QCoreApplication::translate("XLibrary", "Start menu shortcuts"), true);
 #else
-    checkbox(widget, *context.settings, "sources/registry", "Системные приложения Linux", true);
-    checkbox(widget, *context.settings, "sources/start_menu", "Приложения пользователя Linux", true);
+    checkbox(widget, *context.settings, "sources/registry",
+             QCoreApplication::translate("XLibrary", "Linux system applications"), true);
+    checkbox(widget, *context.settings, "sources/start_menu",
+             QCoreApplication::translate("XLibrary", "Linux user applications"), true);
 #endif
-    widget->layout()->addWidget(label(
-        "Поиск выполняется по запросу. Изменённые источники будут использованы после сохранения настроек.", "muted"));
+    widget->layout()->addWidget(
+        label(QCoreApplication::translate(
+                  "XLibrary", "Discovery runs on request. Changed sources will be used after saving settings."),
+              "muted"));
     widget->layout()->addWidget(action_button(context.actions.value("discover")));
     widget->layout()->addWidget(context.registry->create("discovery_progress", context, widget));
-    widget->layout()->addWidget(label("Импорт и экспорт библиотеки", "subheading"));
-    widget->layout()->addWidget(label("JSON сохраняет приложения, параметры, избранное и теги. Существующие записи при "
-                                      "импорте сохраняются. Приложения автоматически не запускаются.",
-                                      "muted"));
-    auto *import = button("Импортировать…");
-    auto *export_button = button("Экспортировать…");
+    widget->layout()->addWidget(
+        label(QCoreApplication::translate("XLibrary", "Library import and export"), "subheading"));
+    widget->layout()->addWidget(
+        label(QCoreApplication::translate(
+                  "XLibrary",
+                  "JSON saves applications, parameters, favorites, and tags. Existing entries are preserved during "
+                  "import. Applications are never launched automatically."),
+              "muted"));
+    auto *import = button(QCoreApplication::translate("XLibrary", "Import…"));
+    auto *export_button = button(QCoreApplication::translate("XLibrary", "Export…"));
     widget->layout()->addWidget(import);
     widget->layout()->addWidget(export_button);
     QObject::connect(import, &QPushButton::clicked, widget, [=] {
-        const auto path = QFileDialog::getOpenFileName(widget, "Импорт библиотеки", {}, "Библиотека XLibrary (*.json)");
+        const auto path =
+            QFileDialog::getOpenFileName(widget, QCoreApplication::translate("XLibrary", "Import library"), {},
+                                         QCoreApplication::translate("XLibrary", "XLibrary catalog (*.json)"));
         if (!path.isEmpty())
             service->import_catalog(path);
     });
     QObject::connect(export_button, &QPushButton::clicked, widget, [=] {
-        const auto path =
-            QFileDialog::getSaveFileName(widget, "Экспорт библиотеки", "xlibrary.json", "Библиотека XLibrary (*.json)");
+        const auto path = QFileDialog::getSaveFileName(
+            widget, QCoreApplication::translate("XLibrary", "Export library"), "xlibrary.json",
+            QCoreApplication::translate("XLibrary", "XLibrary catalog (*.json)"));
         if (!path.isEmpty())
             service->export_catalog(path);
     });
-    auto *clear = button("Очистить историю запусков");
+    auto *clear = button(QCoreApplication::translate("XLibrary", "Clear launch history"));
     widget->layout()->addWidget(clear);
     QObject::connect(clear, &QPushButton::clicked, widget, [=] {
-        if (confirm(widget, "История запусков", "Очистить время последних запусков? Приложения и теги сохранятся.",
-                    "Очистить"))
+        if (confirm(widget, QCoreApplication::translate("XLibrary", "Launch history"),
+                    QCoreApplication::translate(
+                        "XLibrary", "Clear the most recent launch times? Applications and tags will be kept."),
+                    QCoreApplication::translate("XLibrary", "Clear")))
             service->clear_history();
     });
     static_cast<QVBoxLayout *>(widget->layout())->addStretch();
@@ -151,10 +193,12 @@ QWidget *library_settings(const ui_context &context, QWidget *) {
 }
 
 QWidget *plugins(const ui_context &context, QWidget *) {
-    auto *widget = page("Модули интерфейса");
+    auto *widget = page(QCoreApplication::translate("XLibrary", "Interface modules"));
     widget->layout()->addWidget(
-        label("Нативные плагины могут менять области интерфейса и оформление. Включайте только доверенные модули; они "
-              "выполняются внутри XLibrary. Изменения применяются после перезапуска.",
+        label(QCoreApplication::translate(
+                  "XLibrary",
+                  "Native plugins can change interface areas and appearance. Enable only trusted modules; they run "
+                  "inside XLibrary. Changes take effect after restart."),
               "muted"));
     const auto available = context.parameters.value("available_plugins").toStringList();
     const auto enabled = context.settings->value("plugins/enabled").toStringList();
@@ -166,13 +210,15 @@ QWidget *plugins(const ui_context &context, QWidget *) {
     }
     if (available.isEmpty())
         widget->layout()->addWidget(
-            label("Модули не установлены. Каталог: plugins рядом с исполняемым файлом XLibrary.", "muted"));
+            label(QCoreApplication::translate("XLibrary",
+                                              "No modules installed. Folder: plugins next to the XLibrary executable."),
+                  "muted"));
     static_cast<QVBoxLayout *>(widget->layout())->addStretch();
     return widget;
 }
 
 QWidget *about(const ui_context &context, QWidget *) {
-    auto *widget = page("О программе");
+    auto *widget = page(QCoreApplication::translate("XLibrary", "About"));
     auto *card = new QFrame;
     card->setProperty("card", true);
     auto *card_layout = new QVBoxLayout(card);
@@ -186,17 +232,20 @@ QWidget *about(const ui_context &context, QWidget *) {
     identity->addWidget(logo, 0, Qt::AlignTop);
     auto *title = new QVBoxLayout;
     title->addWidget(label("XLibrary", "heading"));
-    auto *version = label("Версия " + QCoreApplication::applicationVersion(), "muted");
+    auto *version =
+        label(QCoreApplication::translate("XLibrary", "Version ") + QCoreApplication::applicationVersion(), "muted");
     version->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
     title->addWidget(version);
     identity->addLayout(title, 1);
     card_layout->addLayout(identity);
-    card_layout->addWidget(label("Библиотека приложений для Windows и Linux", "subheading"));
-    card_layout->addWidget(label("Приложения, теги и сценарии в одном месте. Каталог хранится локально; интернет для "
-                                 "работы не требуется.",
-                                 "muted"));
-    auto *github = button("Открыть GitHub ↗");
-    auto *issues = button("Сообщить о проблеме ↗");
+    card_layout->addWidget(
+        label(QCoreApplication::translate("XLibrary", "Application library for Windows and Linux"), "subheading"));
+    card_layout->addWidget(label(
+        QCoreApplication::translate("XLibrary", "Applications, tags, and scenarios in one place. The catalog is stored "
+                                                "locally; no internet connection is required."),
+        "muted"));
+    auto *github = button(QCoreApplication::translate("XLibrary", "Open GitHub ↗"));
+    auto *issues = button(QCoreApplication::translate("XLibrary", "Report an issue ↗"));
     card_layout->addWidget(github);
     card_layout->addWidget(issues);
     QObject::connect(github, &QPushButton::clicked, widget,
@@ -204,9 +253,12 @@ QWidget *about(const ui_context &context, QWidget *) {
     QObject::connect(issues, &QPushButton::clicked, widget,
                      [] { desktop_platform::open_url(QUrl("https://github.com/Lappland-Julia/XLibrary/issues")); });
     widget->layout()->addWidget(card);
-    widget->layout()->addWidget(label("Технологии и лицензии", "subheading"));
+    widget->layout()->addWidget(
+        label(QCoreApplication::translate("XLibrary", "Technologies and licenses"), "subheading"));
     widget->layout()->addWidget(label(
-        QString("Qt %1 · C++23 · SQLite\nXLibrary — MIT\nЛицензии сторонних компонентов входят в комплект программы.")
+        QString(QCoreApplication::translate(
+                    "XLibrary",
+                    "Qt %1 · C++23 · SQLite\nXLibrary — MIT\nThird-party licenses are included with the application."))
             .arg(QString::fromLatin1(qVersion())),
         "muted"));
     static_cast<QVBoxLayout *>(widget->layout())->addStretch();
@@ -217,13 +269,14 @@ QDialog *settings_dialog(const ui_context &context, QWidget *parent) {
     auto *service = static_cast<DesktopService *>(context.service);
     auto *hotkey = static_cast<GlobalHotkey *>(context.parameters.value("hotkey").value<QObject *>());
     auto *dialog = new QDialog(parent);
-    dialog->setWindowTitle("Настройки XLibrary");
+    dialog->setWindowTitle(QCoreApplication::translate("XLibrary", "XLibrary settings"));
     prepare_dialog(dialog, context, {960, 700}, {640, 420});
     auto *root = new QVBoxLayout(dialog);
     root->setContentsMargins(24, 20, 24, 20);
     root->setSpacing(16);
-    root->addWidget(label("Настройки", "heading"));
-    root->addWidget(label("Оформление, поведение и возможности XLibrary", "muted"));
+    root->addWidget(label(QCoreApplication::translate("XLibrary", "Settings"), "heading"));
+    root->addWidget(
+        label(QCoreApplication::translate("XLibrary", "XLibrary appearance, behavior, and features"), "muted"));
     auto *body = new QHBoxLayout;
     body->setSpacing(16);
     auto *categories = new QButtonGroup(dialog);
@@ -234,9 +287,12 @@ QDialog *settings_dialog(const ui_context &context, QWidget *parent) {
     navigation_layout->setSpacing(8);
     auto *pages = new QStackedWidget;
     const QList<QPair<QString, QString>> sections{
-        {"Общие", "settings_general"},           {"Внешний вид", "settings_appearance"},
-        {"Горячие клавиши", "settings_hotkeys"}, {"Библиотека", "settings_library"},
-        {"Плагины", "settings_plugins"},         {"О программе", "settings_about"}};
+        {QCoreApplication::translate("XLibrary", "General"), "settings_general"},
+        {QCoreApplication::translate("XLibrary", "Appearance settings"), "settings_appearance"},
+        {QCoreApplication::translate("XLibrary", "Keyboard shortcuts"), "settings_hotkeys"},
+        {QCoreApplication::translate("XLibrary", "Library"), "settings_library"},
+        {QCoreApplication::translate("XLibrary", "Plugins"), "settings_plugins"},
+        {QCoreApplication::translate("XLibrary", "About"), "settings_about"}};
     for (const auto &section : sections) {
         const auto index = pages->count();
         auto *item = new SelectionButton(section.first);
@@ -281,9 +337,9 @@ QDialog *settings_dialog(const ui_context &context, QWidget *parent) {
     };
     QObject::connect(service, &DesktopService::message, error, show_error);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel);
-    buttons->button(QDialogButtonBox::Save)->setText("Сохранить");
+    buttons->button(QDialogButtonBox::Save)->setText(QCoreApplication::translate("XLibrary", "Save"));
     buttons->button(QDialogButtonBox::Save)->setProperty("primary", true);
-    buttons->button(QDialogButtonBox::Cancel)->setText("Отмена");
+    buttons->button(QDialogButtonBox::Cancel)->setText(QCoreApplication::translate("XLibrary", "Cancel"));
     root->addWidget(buttons);
     QObject::connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
     QObject::connect(buttons, &QDialogButtonBox::accepted, dialog, [=] {
@@ -300,7 +356,8 @@ QDialog *settings_dialog(const ui_context &context, QWidget *parent) {
             if (auto *edit = qobject_cast<QKeySequenceEdit *>(control)) {
                 const auto value = edit->keySequence().toString(QKeySequence::PortableText);
                 if (!value.isEmpty() && sequences.contains(value)) {
-                    show_error("Одинаковые сочетания назначены нескольким действиям.");
+                    show_error(
+                        QCoreApplication::translate("XLibrary", "The same shortcut is assigned to multiple actions."));
                     categories->button(2)->click();
                     edit->setFocus();
                     return;
@@ -358,7 +415,7 @@ QDialog *settings_dialog(const ui_context &context, QWidget *parent) {
                 QString ignored;
                 desktop_platform::set_autostart(old_autostart, ignored);
             }
-            show_error("Не удалось сохранить файл настроек.");
+            show_error(QCoreApplication::translate("XLibrary", "Could not save the settings file."));
             return;
         }
         emit service->appearance_changed();

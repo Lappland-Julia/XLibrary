@@ -14,6 +14,7 @@
 
 #include "catalog_store.h"
 #include "desktop_service.h"
+#include "localization.h"
 #include "path_helpers.h"
 #include "platform_integration.h"
 
@@ -35,7 +36,7 @@ QString discovery_summary(qsizetype added, const QVector<discovery_issue> &issue
             break;
         }
     }
-    return QString("%1 Добавлено: %2. Дубли: %3. Пропущено: %4. Ошибки: %5.")
+    return QCoreApplication::translate("XLibrary", "%1 Added: %2. Duplicates: %3. Skipped: %4. Errors: %5.")
         .arg(status)
         .arg(added)
         .arg(duplicates)
@@ -46,9 +47,10 @@ QString discovery_summary(qsizetype added, const QVector<discovery_issue> &issue
 QString discovery_details(const QString &summary, const QVector<discovery_issue> &issues) {
     QStringList details{summary};
     for (const auto &issue : issues) {
-        const auto kind = issue.kind == discovery_issue_kind::duplicate ? "Дубль"
-                          : issue.kind == discovery_issue_kind::skipped ? "Пропуск"
-                                                                        : "Ошибка";
+        const auto kind =
+            issue.kind == discovery_issue_kind::duplicate ? QCoreApplication::translate("XLibrary", "Duplicate")
+            : issue.kind == discovery_issue_kind::skipped ? QCoreApplication::translate("XLibrary", "Skipped")
+                                                          : QCoreApplication::translate("XLibrary", "Error");
         details.append(QString("[%1] %2: %3").arg(kind, issue.source, issue.reason));
     }
     return details.join('\n');
@@ -76,7 +78,8 @@ public:
             connect(monitor, &QTimer::timeout, this, [this] { poll(); });
             monitor->start();
         } catch (const std::exception &error) {
-            emit failed(QString("Не удалось открыть библиотеку: %1").arg(QString::fromUtf8(error.what())));
+            emit failed(QCoreApplication::translate("XLibrary", "Could not open the library: %1")
+                            .arg(QString::fromUtf8(error.what())));
         }
     }
     void refresh() {
@@ -137,7 +140,7 @@ DesktopService::DesktopService(QObject *parent, const QString &profile_path, con
         if (operation == "discover") {
             if (success) {
                 scan_progress.percent = 100;
-                scan_progress.stage = "Сканирование завершено";
+                scan_progress.stage = QCoreApplication::translate("XLibrary", "Scan complete");
             }
             discovering = false;
             emit discovery_changed();
@@ -172,7 +175,8 @@ DesktopService::DesktopService(QObject *parent, const QString &profile_path, con
             return;
         if (!success) {
             cancel_scenario();
-            emit scenario_changed("Сценарий остановлен из-за ошибки запуска.");
+            emit scenario_changed(QCoreApplication::translate(
+                "XLibrary", "The scenario stopped because an application could not be launched."));
             return;
         }
         ++step_index;
@@ -207,7 +211,10 @@ void DesktopService::enqueue(const QString &operation, std::function<void(Catalo
             try {
                 if (!worker->store)
                     throw std::runtime_error(
-                        "Библиотека недоступна. Перезапустите приложение после устранения ошибки.");
+                        QCoreApplication::translate(
+                            "XLibrary",
+                            "The library is unavailable. Restart the application after resolving the error.")
+                            .toStdString());
                 task(*worker);
                 emit worker->completed(operation, true);
             } catch (const DiscoveryCancelled &) {
@@ -289,7 +296,8 @@ void DesktopService::launch(qint64 id, bool new_instance, bool scenario) {
     if (launching.contains(id)) {
         if (scenario) {
             cancel_scenario();
-            notify("Приложение ещё запускается. Повторите сценарий после завершения запуска.");
+            notify(QCoreApplication::translate(
+                "XLibrary", "The application is still starting. Try the scenario again after it has started."));
         }
         return;
     }
@@ -305,7 +313,9 @@ void DesktopService::launch(qint64 id, bool new_instance, bool scenario) {
             const auto it = std::find_if(worker.catalog.applications.cbegin(), worker.catalog.applications.cend(),
                                          [id](const auto &record) { return record.id == id; });
             if (it == worker.catalog.applications.cend())
-                throw std::runtime_error("Приложение не найдено в библиотеке.");
+                throw std::runtime_error(
+                    QCoreApplication::translate("XLibrary", "The application was not found in the library.")
+                        .toStdString());
             if (!activate || !desktop_platform::activate_window(it->path)) {
                 desktop_platform::launch_application(*it);
             }
@@ -316,7 +326,9 @@ void DesktopService::launch(qint64 id, bool new_instance, bool scenario) {
                 worker.refresh();
             } catch (const std::exception &error) {
                 emit worker.failed(
-                    QString("Приложение открыто, но история не сохранена: %1").arg(QString::fromUtf8(error.what())));
+                    QCoreApplication::translate("XLibrary",
+                                                "The application opened, but its launch history could not be saved: %1")
+                        .arg(QString::fromUtf8(error.what())));
             }
         } catch (...) {
             emit worker.launched(id, false, generation);
@@ -332,7 +344,7 @@ void DesktopService::open_folder(qint64 id) {
 
 void DesktopService::run_scenario(qint64 id) {
     if (scenario_active) {
-        notify("Уже выполняется сценарий. Сначала остановите его.");
+        notify(QCoreApplication::translate("XLibrary", "A scenario is already running. Stop it first."));
         return;
     }
     for (const auto &record : snapshot.scenarios) {
@@ -342,7 +354,7 @@ void DesktopService::run_scenario(qint64 id) {
                 if (step.enabled)
                     pending_steps.append(step);
             if (pending_steps.isEmpty()) {
-                notify("В сценарии нет включённых приложений.");
+                notify(QCoreApplication::translate("XLibrary", "The scenario has no enabled applications."));
                 return;
             }
             scenario_name = record.name;
@@ -358,11 +370,14 @@ void DesktopService::run_scenario(qint64 id) {
 void DesktopService::next_scenario_step() {
     if (step_index >= pending_steps.size()) {
         scenario_active = false;
-        emit scenario_changed("Сценарий «" + scenario_name + "» выполнен.");
+        emit scenario_changed(QCoreApplication::translate("XLibrary", "Scenario “") + scenario_name +
+                              QCoreApplication::translate("XLibrary", "” completed."));
         return;
     }
-    emit scenario_changed(
-        QString("%1 · шаг %2 из %3").arg(scenario_name).arg(step_index + 1).arg(pending_steps.size()));
+    emit scenario_changed(QCoreApplication::translate("XLibrary", "%1 · step %2 of %3")
+                              .arg(scenario_name)
+                              .arg(step_index + 1)
+                              .arg(pending_steps.size()));
     scenario_timer.start(pending_steps[step_index].delay_ms);
 }
 
@@ -370,7 +385,8 @@ void DesktopService::cancel_scenario() {
     ++*scenario_generation;
     scenario_active = false;
     scenario_timer.stop();
-    emit scenario_changed("Сценарий остановлен. Уже открытые приложения продолжают работать.");
+    emit scenario_changed(QCoreApplication::translate(
+        "XLibrary", "The scenario stopped. Applications already opened will keep running."));
 }
 
 void DesktopService::discover() {
@@ -379,12 +395,12 @@ void DesktopService::discover() {
     const bool registry = settings.value("sources/registry", true).toBool();
     const bool start_menu = settings.value("sources/start_menu", true).toBool();
     if (!registry && !start_menu) {
-        notify("Выберите источники в настройках библиотеки.");
+        notify(QCoreApplication::translate("XLibrary", "Select discovery sources in the library settings."));
         return;
     }
     discovering = true;
     discovery_cancelled = std::make_shared<discovery_control>();
-    scan_progress = {-1, 0, 0, "Подготовка списка приложений…"};
+    scan_progress = {-1, 0, 0, QCoreApplication::translate("XLibrary", "Preparing the application list…")};
     emit discovery_changed();
     // Обновления из обоих рабочих потоков приходят в UI не чаще смены процента или этапа.
     const std::function<void(const discovery_progress &)> report_progress =
@@ -411,8 +427,9 @@ void DesktopService::discover() {
             auto result = watcher->result();
             if (discovery_cancelled->requested.load()) {
                 discovering = false;
-                const auto message =
-                    discovery_summary(0, result.second, "Сканирование отменено; изменения не сохранены.");
+                const auto message = discovery_summary(
+                    0, result.second,
+                    QCoreApplication::translate("XLibrary", "Scan cancelled; changes were not saved."));
                 scan_report = discovery_details(message, result.second);
                 emit discovery_report_changed();
                 emit discovery_changed();
@@ -420,7 +437,8 @@ void DesktopService::discover() {
                 watcher->deleteLater();
                 return;
             }
-            scan_progress = {90, 0, result.first.size(), "Добавление приложений в библиотеку"};
+            scan_progress = {90, 0, result.first.size(),
+                             QCoreApplication::translate("XLibrary", "Adding applications to the library")};
             emit discovery_progress_changed();
             enqueue("discover", [applications = std::move(result.first), issues = std::move(result.second),
                                  cancelled = discovery_cancelled, report_progress](CatalogWorker &worker) mutable {
@@ -429,31 +447,37 @@ void DesktopService::discover() {
                     count = worker.store->import_records(
                         applications, cancelled.get(),
                         [&](qsizetype processed, qsizetype total) {
-                            report_progress({total > 0 ? 90 + static_cast<int>(9.0 * processed / total) : 99, processed,
-                                             total, "Добавление приложений в библиотеку"});
+                            report_progress(
+                                {total > 0 ? 90 + static_cast<int>(9.0 * processed / total) : 99, processed, total,
+                                 QCoreApplication::translate("XLibrary", "Adding applications to the library")});
                         },
                         &issues);
                 } catch (const DiscoveryCancelled &) {
-                    const auto message = discovery_summary(0, issues, "Сканирование отменено; изменения не сохранены.");
+                    const auto message = discovery_summary(
+                        0, issues, QCoreApplication::translate("XLibrary", "Scan cancelled; changes were not saved."));
                     emit worker.discovery_report_ready(discovery_details(message, issues));
                     emit worker.notification(message);
                     throw;
                 } catch (const std::exception &error) {
                     issues.append(discovery_issue{"SQLite", QString::fromUtf8(error.what())});
-                    const auto message = discovery_summary(0, issues, "Сканирование прервано; изменения не сохранены.");
+                    const auto message = discovery_summary(
+                        0, issues, QCoreApplication::translate("XLibrary", "Scan failed; changes were not saved."));
                     emit worker.discovery_report_ready(discovery_details(message, issues));
                     emit worker.notification(message);
                     throw;
                 }
-                report_progress({99, applications.size(), applications.size(), "Обновление библиотеки"});
-                const auto message = discovery_summary(count.added, issues, "Сканирование завершено.");
+                report_progress({99, applications.size(), applications.size(),
+                                 QCoreApplication::translate("XLibrary", "Refreshing the library")});
+                const auto message =
+                    discovery_summary(count.added, issues, QCoreApplication::translate("XLibrary", "Scan complete."));
                 emit worker.discovery_report_ready(discovery_details(message, issues));
                 emit worker.notification(message);
                 worker.refresh();
             });
         } catch (const std::exception &error) {
             const QVector<discovery_issue> issues{{"Discovery", QString::fromUtf8(error.what())}};
-            const auto message = discovery_summary(0, issues, "Сканирование прервано; изменения не сохранены.");
+            const auto message = discovery_summary(
+                0, issues, QCoreApplication::translate("XLibrary", "Scan failed; changes were not saved."));
             scan_report = discovery_details(message, issues);
             emit discovery_report_changed();
             notify(message);
@@ -478,9 +502,9 @@ void DesktopService::cancel_discovery() {
     if (!discovery_cancelled->phase.compare_exchange_strong(expected, discovery_phase::cancelling))
         return;
     discovery_cancelled->requested.store(true);
-    scan_progress.stage = "Остановка сканирования…";
+    scan_progress.stage = QCoreApplication::translate("XLibrary", "Stopping the scan…");
     emit discovery_progress_changed();
-    notify("Остановка поиска приложений…");
+    notify(QCoreApplication::translate("XLibrary", "Stopping application discovery…"));
 }
 
 void DesktopService::export_catalog(const QString &path) {
@@ -496,11 +520,13 @@ void DesktopService::export_catalog(const QString &path) {
         }
         QSaveFile file(path);
         if (!file.open(QIODevice::WriteOnly))
-            throw std::runtime_error("Не удалось открыть файл экспорта.");
+            throw std::runtime_error(
+                QCoreApplication::translate("XLibrary", "Could not open the export file.").toStdString());
         const auto contents = QJsonDocument(QJsonObject{{"format", 1}, {"applications", applications}}).toJson();
         if (file.write(contents) != contents.size() || !file.commit())
-            throw std::runtime_error("Не удалось сохранить экспорт.");
-        emit worker.notification("Библиотека экспортирована.");
+            throw std::runtime_error(
+                QCoreApplication::translate("XLibrary", "Could not save the export.").toStdString());
+        emit worker.notification(QCoreApplication::translate("XLibrary", "Library exported."));
     });
 }
 
@@ -508,39 +534,50 @@ void DesktopService::import_catalog(const QString &path) {
     enqueue("import", [path](CatalogWorker &worker) {
         QFile file(path);
         if (!file.open(QIODevice::ReadOnly) || file.size() > 5 * 1024 * 1024)
-            throw std::runtime_error("Невозможно прочитать файл или его размер превышает 5 МБ.");
+            throw std::runtime_error(
+                QCoreApplication::translate("XLibrary", "Cannot read the file, or its size exceeds 5 MiB.")
+                    .toStdString());
         QJsonParseError error;
         const auto document = QJsonDocument::fromJson(file.readAll(), &error);
         if (error.error != QJsonParseError::NoError)
-            throw std::runtime_error(QString("Ошибка JSON в позиции %1: %2. Импорт отменён.")
-                                         .arg(error.offset)
-                                         .arg(error.errorString())
-                                         .toStdString());
+            throw std::runtime_error(
+                QCoreApplication::translate("XLibrary", "JSON error at offset %1: %2. Import cancelled.")
+                    .arg(error.offset)
+                    .arg(error.errorString())
+                    .toStdString());
         const auto root = document.object();
         if (!document.isObject())
-            throw std::runtime_error("Поле root: ожидается объект JSON. Импорт отменён.");
+            throw std::runtime_error(
+                QCoreApplication::translate("XLibrary", "Field root: expected a JSON object. Import cancelled.")
+                    .toStdString());
         if (!root.value("format").isDouble() || root.value("format").toDouble() != 1)
-            throw std::runtime_error("Поле format: поддерживается только версия 1. Импорт отменён.");
+            throw std::runtime_error(
+                QCoreApplication::translate("XLibrary", "Field format: only version 1 is supported. Import cancelled.")
+                    .toStdString());
         if (!root.value("applications").isArray())
-            throw std::runtime_error("Поле applications: ожидается массив. Импорт отменён.");
+            throw std::runtime_error(
+                QCoreApplication::translate("XLibrary", "Field applications: expected an array. Import cancelled.")
+                    .toStdString());
         QVector<app_record> records;
         for (const auto &value : root.value("applications").toArray()) {
             const auto fail = [&](const QString &field, const QString &reason) {
-                throw std::runtime_error(QString("Запись %1, поле %2: %3. Импорт отменён; изменения не сохранены.")
-                                             .arg(records.size() + 1)
-                                             .arg(field, reason)
-                                             .toStdString());
+                throw std::runtime_error(
+                    QCoreApplication::translate("XLibrary",
+                                                "Record %1, field %2: %3. Import cancelled; changes were not saved.")
+                        .arg(records.size() + 1)
+                        .arg(field, reason)
+                        .toStdString());
             };
             if (!value.isObject())
-                fail("applications[]", "ожидается объект");
+                fail("applications[]", QCoreApplication::translate("XLibrary", "expected an object"));
             const auto object = value.toObject();
             const auto text = [&](const QString &field, bool required = false) {
                 const auto item = object.value(field);
                 if ((!item.isUndefined() || required) && !item.isString())
-                    fail(field, "ожидается строка");
+                    fail(field, QCoreApplication::translate("XLibrary", "expected a string"));
                 const auto result = item.toString();
                 if (result.contains(QChar::Null))
-                    fail(field, "нулевой символ недопустим");
+                    fail(field, QCoreApplication::translate("XLibrary", "null characters are not allowed"));
                 return result;
             };
             app_record record;
@@ -549,38 +586,42 @@ void DesktopService::import_catalog(const QString &path) {
             record.arguments = text("arguments");
             record.working_directory = text("working_directory");
             if (object.contains("favorite") && !object.value("favorite").isBool())
-                fail("favorite", "ожидается логическое значение");
+                fail("favorite", QCoreApplication::translate("XLibrary", "expected a boolean"));
             record.favorite = object.value("favorite").toBool();
             if (object.contains("tags") && !object.value("tags").isArray())
-                fail("tags", "ожидается массив строк");
+                fail("tags", QCoreApplication::translate("XLibrary", "expected an array of strings"));
             qsizetype tag_index = 0;
             for (const auto &tag : object.value("tags").toArray()) {
                 const auto field = QString("tags[%1]").arg(++tag_index);
                 if (!tag.isString())
-                    fail(field, "ожидается строка");
+                    fail(field, QCoreApplication::translate("XLibrary", "expected a string"));
                 const auto name = tag.toString().trimmed();
                 if (!valid_tag_name(name))
                     fail(field,
-                         "тег должен содержать от 1 до 64 символов, без пробелов, запятых, # и нулевого символа");
+                         QCoreApplication::translate(
+                             "XLibrary",
+                             "a tag must contain 1 to 64 characters, without spaces, commas, #, or null characters"));
                 record.tags.append(name);
             }
             record.tags.removeDuplicates();
             if (record.name.isEmpty() || record.name.size() > 256)
-                fail("name", "название должно содержать от 1 до 256 символов");
+                fail("name", QCoreApplication::translate("XLibrary", "the name must contain 1 to 256 characters"));
             if (!QFileInfo(record.path).isAbsolute())
-                fail("path", "ожидается абсолютный путь");
+                fail("path", QCoreApplication::translate("XLibrary", "expected an absolute path"));
 #ifdef Q_OS_WIN
             if (QFileInfo(record.path).suffix().isEmpty())
-                fail("path", "для цели Windows требуется расширение файла");
+                fail("path", QCoreApplication::translate("XLibrary", "a Windows target requires a filename extension"));
 #endif
             if (!record.working_directory.isEmpty() && !QFileInfo(record.working_directory).isAbsolute())
-                fail("working_directory", "ожидается пустая строка или абсолютный путь");
+                fail("working_directory",
+                     QCoreApplication::translate("XLibrary", "expected an empty string or an absolute path"));
             records.append(std::move(record));
         }
         const auto count = worker.store->import_records(records);
         worker.refresh();
-        emit worker.notification(
-            QString("Импортировано приложений: %1. Дубли: %2.").arg(count.added).arg(count.duplicates));
+        emit worker.notification(QCoreApplication::translate("XLibrary", "Applications imported: %1. Duplicates: %2.")
+                                     .arg(count.added)
+                                     .arg(count.duplicates));
     });
 }
 
@@ -588,7 +629,7 @@ void DesktopService::clear_history() {
     enqueue("history", [](CatalogWorker &worker) {
         worker.store->clear_history();
         worker.refresh();
-        emit worker.notification("История запусков очищена.");
+        emit worker.notification(QCoreApplication::translate("XLibrary", "Launch history cleared."));
     });
 }
 

@@ -13,6 +13,7 @@
 #include "editors.h"
 #include "library_splitter.h"
 #include "library_views.h"
+#include "localization.h"
 #include "main_window.h"
 #include "settings_view.h"
 #include "ui_helpers.h"
@@ -48,8 +49,8 @@ QWidget *shell(const ui_context &context, QWidget *parent) {
     auto *dismiss = new QToolButton;
     dismiss->setObjectName("notification_dismiss");
     dismiss->setCursor(Qt::PointingHandCursor);
-    dismiss->setAccessibleName("Закрыть уведомление");
-    dismiss->setToolTip("Закрыть уведомление");
+    dismiss->setAccessibleName(QCoreApplication::translate("XLibrary", "Dismiss notification"));
+    dismiss->setToolTip(QCoreApplication::translate("XLibrary", "Dismiss notification"));
     auto update_notice = [=] {
         const QColor color(appearance::is_dark(*context.settings) ? "#A8A9AF" : "#555B64");
         const auto icon_size = appearance::scaled(*context.settings, 20);
@@ -114,7 +115,7 @@ MainWindow::MainWindow(DesktopService &service) : service(service), hotkey(this)
     appearance::apply(service.settings, registry.style_sheet());
     setCentralWidget(registry.create("shell", context, this));
     auto *tray_menu = new QMenu(this);
-    auto *show_action = tray_menu->addAction("Открыть XLibrary");
+    auto *show_action = tray_menu->addAction(QCoreApplication::translate("XLibrary", "Open XLibrary"));
     connect(show_action, &QAction::triggered, this, &MainWindow::show_library);
     tray_menu->addAction(context.actions.value("settings"));
     tray_menu->addSeparator();
@@ -174,57 +175,65 @@ void MainWindow::create_actions() {
         connect(action, &QAction::triggered, this, callback);
         return action;
     };
-    add("launch", "Запустить", "play", [this] {
+    add("launch", QCoreApplication::translate("XLibrary", "Launch"), "play", [this] {
         if (service.selection())
             service.launch(service.selection());
     });
-    add("new_instance", "Новый экземпляр", "play", [this] {
+    add("new_instance", QCoreApplication::translate("XLibrary", "New instance"), "play", [this] {
         if (service.selection())
             service.launch(service.selection(), true);
     });
-    add("focus_search", "Поиск", "search", [] {});
-    add("settings", "Настройки", "settings", [this] {
+    add("focus_search", QCoreApplication::translate("XLibrary", "Search"), "search", [] {});
+    add("settings", QCoreApplication::translate("XLibrary", "Settings"), "settings", [this] {
         if (!isVisible())
             show_library();
         open_dialog("settings", context);
     });
-    add("add_application", "Добавить приложение", "add", [this] { open_dialog("application_editor", context); });
-    add("edit_application", "Изменить", "settings", [this] {
+    add("add_application", QCoreApplication::translate("XLibrary", "Add application"), "add",
+        [this] { open_dialog("application_editor", context); });
+    add("edit_application", QCoreApplication::translate("XLibrary", "Edit"), "settings", [this] {
         if (const auto *record = service.selected()) {
             auto edit_context = context;
             edit_context.parameters.insert("record", QVariant::fromValue(*record));
             open_dialog("application_editor", edit_context);
         }
     });
-    add("remove_application", "Удалить из библиотеки", "trash", [this] {
+    add("remove_application", QCoreApplication::translate("XLibrary", "Remove from library"), "trash", [this] {
         const auto *record = service.selected();
         if (!record)
             return;
         const auto id = record->id;
         const auto name = record->name;
-        if (confirm(this, "Удалить приложение", "Удалить «" + name + "» из библиотеки? Файлы приложения сохранятся."))
+        if (confirm(this, QCoreApplication::translate("XLibrary", "Remove application"),
+                    QCoreApplication::translate("XLibrary", "Remove “") + name +
+                        QCoreApplication::translate("XLibrary", "” from the library? Application files will be kept.")))
             service.remove_application(id);
     });
     context.actions.value("remove_application")
-        ->setToolTip("Удалить выбранное приложение из библиотеки (Delete). Файлы приложения сохранятся.");
-    add("favorite", "В избранное", "favorite", [this] {
+        ->setToolTip(QCoreApplication::translate(
+            "XLibrary", "Remove the selected application from the library (Delete). Application files will be kept."));
+    add("favorite", QCoreApplication::translate("XLibrary", "Add to favorites"), "favorite", [this] {
         if (const auto *record = service.selected()) {
             auto updated = *record;
             updated.favorite = !updated.favorite;
             service.save_application(std::move(updated));
         }
     });
-    add("open_folder", "Открыть папку", "folder", [this] { service.open_folder(service.selection()); });
-    add("discover", "Найти установленные приложения", "refresh", [this] {
+    add("open_folder", QCoreApplication::translate("XLibrary", "Open folder"), "folder",
+        [this] { service.open_folder(service.selection()); });
+    add("discover", QCoreApplication::translate("XLibrary", "Find installed applications"), "refresh", [this] {
         if (service.is_discovering())
             service.cancel_discovery();
         else
             service.discover();
     });
-    add("add_tag", "Добавить тег", "add", [this] { open_dialog("tag_editor", context); });
-    add("add_scenario", "Создать сценарий", "add", [this] { open_dialog("scenario_editor", context); });
-    add("details", "Сведения", "app", [this] { open_dialog("details_dialog", context); });
-    add("quit", "Выход", "x", [this] {
+    add("add_tag", QCoreApplication::translate("XLibrary", "Add tag"), "add",
+        [this] { open_dialog("tag_editor", context); });
+    add("add_scenario", QCoreApplication::translate("XLibrary", "Create scenario"), "add",
+        [this] { open_dialog("scenario_editor", context); });
+    add("details", QCoreApplication::translate("XLibrary", "Details"), "app",
+        [this] { open_dialog("details_dialog", context); });
+    add("quit", QCoreApplication::translate("XLibrary", "Quit"), "x", [this] {
         quitting = true;
         close();
         qApp->quit();
@@ -249,12 +258,15 @@ void MainWindow::refresh_actions() {
     context.actions.value("discover")
         ->setEnabled(service.is_ready() && (!service.is_discovering() || service.can_cancel_discovery()));
     context.actions.value("discover")
-        ->setText(service.is_discovering() ? "Отменить поиск" : "Найти установленные приложения");
+        ->setText(service.is_discovering() ? QCoreApplication::translate("XLibrary", "Cancel discovery")
+                                           : QCoreApplication::translate("XLibrary", "Find installed applications"));
     context.actions.value("launch")->setText(
         record && record->running && service.settings.value("behavior/relaunch", "activate").toString() == "activate"
-            ? "Перейти к окну"
-            : "Запустить");
-    context.actions.value("favorite")->setText(record && record->favorite ? "Убрать из избранного" : "В избранное");
+            ? QCoreApplication::translate("XLibrary", "Switch to window")
+            : QCoreApplication::translate("XLibrary", "Launch"));
+    context.actions.value("favorite")
+        ->setText(record && record->favorite ? QCoreApplication::translate("XLibrary", "Remove from favorites")
+                                             : QCoreApplication::translate("XLibrary", "Add to favorites"));
 }
 
 void MainWindow::apply_settings() {
@@ -296,7 +308,7 @@ void MainWindow::load_plugins() {
         auto *plugin = qobject_cast<UiPlugin *>(loader->instance());
         if (!plugin) {
             QTimer::singleShot(0, &service, [this, id, error = loader->errorString()] {
-                service.notify("Не удалось загрузить " + id + ": " + error);
+                service.notify(QCoreApplication::translate("XLibrary", "Could not load ") + id + ": " + error);
             });
             continue;
         }

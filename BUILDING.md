@@ -12,7 +12,7 @@
 
 ```sh
 sudo apt-get update
-sudo apt-get install build-essential clang cmake ninja-build qt6-base-dev qt6-wayland libx11-dev
+sudo apt-get install build-essential clang cmake ninja-build qt6-base-dev qt6-wayland qt6-tools-dev qt6-l10n-tools libx11-dev
 cmake --preset linux-debug
 cmake --build --preset linux-debug --parallel 4
 ./cmake-build-linux-debug/XLibrary
@@ -88,7 +88,7 @@ sudo apt remove xlibrary
 
 ## Windows
 
-Нужны Windows 10/11 x64, Git, CMake 3.21+, компилятор C++23 и **динамический** Qt 6.5+ с Widgets, Concurrent и Network. Для Ninja нужен `ninja.exe` в PATH. При первой конфигурации CMake скачивает SQLite с проверкой хеша.
+Нужны Windows 10/11 x64, Git, CMake 3.21+, компилятор C++23 и **динамический** Qt 6.5+ с Widgets, Concurrent и Network. Для сборки встроенного перевода нужны Qt LinguistTools (`lrelease`); при установке Qt SDK включите инструменты переводов. Для Ninja нужен `ninja.exe` в PATH. При первой конфигурации CMake скачивает SQLite с проверкой хеша.
 
 Версия приложения задаётся только в корневом файле `VERSION` в формате `major.minor.patch`. CMake использует её для приложения, окна «О программе», ресурсов Windows и упаковщика. После изменения `VERSION` следующая сборка автоматически повторяет конфигурацию.
 
@@ -227,3 +227,15 @@ CI разделён на три проверки компиляции (MSVC Debu
    отмена уже недоступна; поздний запрос не выдаётся за выполненный откат.
 
 Успешный `--check-startup` не подтверждает эти интерактивные сценарии.
+
+## Локализация
+
+Английский — базовый язык сообщений; русский каталог translations/xlibrary_ru.ts
+компилируется lrelease и встраивается в исполняемый файл. Рядом с программой
+не нужны отдельные файлы перевода XLibrary. По умолчанию используется первый
+поддерживаемый язык системного списка предпочтений; если подходящего языка
+нет или перевод не загружается, используется английский. Настройки → Общие
+позволяют выбрать системный язык, English или Русский; нужен перезапуск.
+
+Для добавления сообщений используйте QCoreApplication::translate с контекстом XLibrary и обновляйте
+русский TS-каталог. lrelease не запускается в пользовательском приложении.

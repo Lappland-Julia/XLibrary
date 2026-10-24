@@ -7,6 +7,8 @@
 #include <QString>
 #include <stdexcept>
 
+#include "localization.h"
+
 namespace application_paths {
 inline bool portable_mode() {
     return QFileInfo(QCoreApplication::applicationDirPath() + "/portable.flag").isFile();
@@ -22,7 +24,8 @@ inline bool bundled_runtime() {
     // APPIMAGE может принадлежать другому приложению, запустившему XLibrary.
     if (!QFileInfo(app_dir).isAbsolute() || !QFileInfo(app_dir).isDir() || current_binary.isEmpty() ||
         bundled_binary.canonicalFilePath() != current_binary)
-        throw std::runtime_error("Некорректные пути запуска XLibrary AppImage.");
+        throw std::runtime_error(
+            QCoreApplication::translate("XLibrary", "Invalid XLibrary AppImage launch paths.").toStdString());
     return true;
 #else
     return false;
@@ -38,7 +41,8 @@ inline QString appimage_file() {
         return {};
     const QFileInfo image_info(image);
     if (!image_info.isAbsolute() || !image_info.isFile() || !image_info.isExecutable())
-        throw std::runtime_error("Некорректный путь к файлу XLibrary AppImage.");
+        throw std::runtime_error(
+            QCoreApplication::translate("XLibrary", "Invalid XLibrary AppImage file path.").toStdString());
     return QDir::cleanPath(image);
 }
 }

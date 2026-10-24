@@ -1,3 +1,4 @@
+#include "localization.h"
 #ifdef XLIBRARY_HAVE_X11
 #include <X11/keysym.h>
 #include <X11/Xatom.h>
@@ -144,9 +145,12 @@ QString unescape_value(const QString &value) {
 desktop_entry read_entry(const QString &path) {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-        throw std::runtime_error(QString("Не удалось прочитать %1: %2").arg(path, file.errorString()).toStdString());
+        throw std::runtime_error(QCoreApplication::translate("XLibrary", "Could not read %1: %2")
+                                     .arg(path, file.errorString())
+                                     .toStdString());
     if (file.size() > 4 * 1024 * 1024)
-        throw std::runtime_error("Файл .desktop слишком большой.");
+        throw std::runtime_error(
+            QCoreApplication::translate("XLibrary", "The .desktop file is too large.").toStdString());
     desktop_entry entry{absolute_path(path), {}};
     bool in_entry = false;
     const auto lines = QString::fromUtf8(file.readAll()).split('\n');
@@ -229,7 +233,8 @@ QStringList split_command(const QString &command) {
     for (qsizetype index = 0; index < command.size(); ++index) {
         const auto character = command[index];
         if (character == QChar::Null)
-            throw std::invalid_argument("Команда содержит нулевой символ.");
+            throw std::invalid_argument(
+                QCoreApplication::translate("XLibrary", "The command contains a null character.").toStdString());
         if (character == '"') {
             quoted = !quoted;
             started = true;
@@ -254,7 +259,8 @@ QStringList split_command(const QString &command) {
         }
     }
     if (quoted)
-        throw std::invalid_argument("В команде не закрыты двойные кавычки.");
+        throw std::invalid_argument(
+            QCoreApplication::translate("XLibrary", "The command has an unclosed double quote.").toStdString());
     if (started)
         result.append(current);
     return result;
@@ -279,12 +285,17 @@ QStringList entry_command(const desktop_entry &entry) {
                 continue;
             }
             if (++index == token.size())
-                throw std::invalid_argument("Некорректный код поля Exec в .desktop.");
+                throw std::invalid_argument(
+                    QCoreApplication::translate("XLibrary", "Invalid Exec field code in .desktop.").toStdString());
             const auto code = token[index];
             if (QStringView(u"fFuU").contains(code) && ++file_codes > 1)
-                throw std::invalid_argument("Exec может содержать только один код файла или URL.");
+                throw std::invalid_argument(
+                    QCoreApplication::translate("XLibrary", "Exec may contain only one file or URL field code.")
+                        .toStdString());
             if ((code == 'F' || code == 'U') && token.size() != 2)
-                throw std::invalid_argument("Код списка файлов Exec должен быть отдельным аргументом.");
+                throw std::invalid_argument(
+                    QCoreApplication::translate("XLibrary", "An Exec file list code must be a separate argument.")
+                        .toStdString());
             if (code == '%')
                 expanded += '%';
             else if (code == 'c')
@@ -294,14 +305,16 @@ QStringList entry_command(const desktop_entry &entry) {
             else if (QStringView(u"fFuUdDnNvm").contains(code))
                 removed_code = true;
             else
-                throw std::invalid_argument("Неподдерживаемый код поля Exec в .desktop.");
+                throw std::invalid_argument(
+                    QCoreApplication::translate("XLibrary", "Unsupported Exec field code in .desktop.").toStdString());
         }
         // XLibrary запускает приложение без файлов: %f/%F/%u/%U не дают аргументов.
         if (!expanded.isEmpty() || !removed_code)
             result.append(expanded);
     }
     if (result.isEmpty() || result.front().isEmpty() || result.front().contains('='))
-        throw std::invalid_argument("В .desktop отсутствует корректная команда Exec.");
+        throw std::invalid_argument(
+            QCoreApplication::translate("XLibrary", "The .desktop file has no valid Exec command.").toStdString());
     return result;
 }
 
@@ -317,22 +330,30 @@ QString dbus_service(const desktop_entry &entry) {
 
 void validate_entry(const desktop_entry &entry) {
     if (entry.values.value("Type") != "Application" || entry.flag("Hidden"))
-        throw std::invalid_argument("Файл .desktop не содержит доступное приложение.");
+        throw std::invalid_argument(
+            QCoreApplication::translate("XLibrary", "The .desktop file does not contain an available application.")
+                .toStdString());
     if (localized_value(entry, "Name").isEmpty())
-        throw std::invalid_argument("В файле .desktop отсутствует имя приложения.");
+        throw std::invalid_argument(
+            QCoreApplication::translate("XLibrary", "The .desktop file has no application name.").toStdString());
     const auto try_exec = entry.values.value("TryExec");
     if (!try_exec.isEmpty() && executable_path(try_exec).isEmpty())
-        throw std::invalid_argument("Исполняемый файл TryExec недоступен.");
+        throw std::invalid_argument(
+            QCoreApplication::translate("XLibrary", "The TryExec executable is unavailable.").toStdString());
     const auto directory = entry.values.value("Path");
     if (!directory.isEmpty() && !QFileInfo(directory).isAbsolute())
-        throw std::invalid_argument("Рабочая папка .desktop должна быть абсолютной.");
+        throw std::invalid_argument(
+            QCoreApplication::translate("XLibrary", "The .desktop working directory must be absolute.").toStdString());
     if (entry.flag("DBusActivatable")) {
         if (dbus_service(entry).isEmpty())
-            throw std::invalid_argument("Некорректное имя службы D-Bus в .desktop.");
+            throw std::invalid_argument(
+                QCoreApplication::translate("XLibrary", "Invalid D-Bus service name in .desktop.").toStdString());
     } else {
         const auto command = entry_command(entry);
         if (executable_path(command.front()).isEmpty())
-            throw std::invalid_argument("Исполняемый файл из Exec недоступен.");
+            throw std::invalid_argument(
+                QCoreApplication::translate("XLibrary", "The executable specified by Exec is unavailable.")
+                    .toStdString());
     }
 }
 
@@ -370,7 +391,10 @@ QStringList terminal_command(const QStringList &command) {
             return result;
         }
     }
-    throw std::runtime_error("Приложению требуется терминал. Установите терминал или задайте переменную TERMINAL.");
+    throw std::runtime_error(
+        QCoreApplication::translate("XLibrary",
+                                    "This application requires a terminal. Install one or set the TERMINAL variable.")
+            .toStdString());
 }
 
 struct process_identity {
@@ -702,7 +726,10 @@ bool desktop_platform::activate_window(const QString &path) {
         event.xclient.data.l[2] = current_active.isEmpty() ? 0 : static_cast<long>(current_active.front());
         if (XSendEvent(display.get(), root, False, SubstructureRedirectMask | SubstructureNotifyMask, &event) == 0 ||
             !errors.succeeded())
-            throw std::runtime_error("Не удалось передать оконному менеджеру X11 запрос активации окна.");
+            throw std::runtime_error(
+                QCoreApplication::translate("XLibrary",
+                                            "Could not send the window activation request to the X11 window manager.")
+                    .toStdString());
         return true;
     }
 #endif
@@ -723,27 +750,28 @@ bool GlobalHotkey::set_sequence(const QKeySequence &value, QString &error) {
         return true;
     }
     if (value.count() != 1) {
-        error = "Используйте одно сочетание клавиш.";
+        error = QCoreApplication::translate("XLibrary", "Use a single key combination.");
         return false;
     }
     if (wayland_session()) {
-        error = "Wayland управляет глобальными сочетаниями. Назначьте запуск XLibrary в настройках клавиатуры системы.";
+        error = QCoreApplication::translate(
+            "XLibrary", "Wayland manages global shortcuts. Assign XLibrary in the system keyboard settings.");
         return false;
     }
 #ifdef XLIBRARY_HAVE_X11
     const auto combination = value[0];
     const auto symbol = hotkey_symbol(combination.key());
     if (symbol == NoSymbol) {
-        error = "Используйте букву, цифру, F1–F24 или пробел.";
+        error = QCoreApplication::translate("XLibrary", "Use a letter, digit, F1–F24, or Space.");
         return false;
     }
     const auto qt_modifiers = combination.keyboardModifiers();
     if (!(qt_modifiers & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier))) {
-        error = "Добавьте Ctrl, Alt или Super к глобальному сочетанию.";
+        error = QCoreApplication::translate("XLibrary", "Add Ctrl, Alt, or Super to the global shortcut.");
         return false;
     }
     if (qt_modifiers & ~(Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier | Qt::ShiftModifier)) {
-        error = "Сочетание содержит неподдерживаемый модификатор.";
+        error = QCoreApplication::translate("XLibrary", "The shortcut contains an unsupported modifier.");
         return false;
     }
     if (!linux_state) {
@@ -752,7 +780,8 @@ bool GlobalHotkey::set_sequence(const QKeySequence &value, QString &error) {
             const std::lock_guard lock(x11_mutex);
             state->display.reset(XOpenDisplay(nullptr));
             if (!state->display) {
-                error = "Не удалось подключиться к серверу X11 для глобального сочетания.";
+                error = QCoreApplication::translate("XLibrary",
+                                                    "Could not connect to the X11 server for the global shortcut.");
                 return false;
             }
             int detectable = False;
@@ -811,7 +840,7 @@ bool GlobalHotkey::set_sequence(const QKeySequence &value, QString &error) {
     if (qt_modifiers & Qt::AltModifier) {
         const auto alt = modifier_mask(display, XK_Alt_L);
         if (!alt) {
-            error = "В раскладке X11 отсутствует модификатор Alt.";
+            error = QCoreApplication::translate("XLibrary", "The X11 keymap has no Alt modifier.");
             return false;
         }
         modifiers |= alt;
@@ -819,13 +848,13 @@ bool GlobalHotkey::set_sequence(const QKeySequence &value, QString &error) {
     if (qt_modifiers & Qt::MetaModifier) {
         const auto super = modifier_mask(display, XK_Super_L);
         if (!super) {
-            error = "В раскладке X11 отсутствует модификатор Super.";
+            error = QCoreApplication::translate("XLibrary", "The X11 keymap has no Super modifier.");
             return false;
         }
         modifiers |= super;
     }
     if (!keycode) {
-        error = "Клавиша недоступна в текущей раскладке X11.";
+        error = QCoreApplication::translate("XLibrary", "This key is unavailable in the current X11 keymap.");
         return false;
     }
     if (keycode == linux_state->keycode && modifiers == linux_state->modifiers) {
@@ -838,7 +867,8 @@ bool GlobalHotkey::set_sequence(const QKeySequence &value, QString &error) {
     if (!errors.succeeded()) {
         for (const auto locks : linux_state->lock_combinations)
             XUngrabKey(display, keycode, modifiers | locks, DefaultRootWindow(display));
-        error = "Сочетание занято оконным менеджером или другим приложением.";
+        error = QCoreApplication::translate("XLibrary",
+                                            "The shortcut is in use by the window manager or another application.");
         return false;
     }
     if (linux_state->keycode) {
@@ -851,7 +881,8 @@ bool GlobalHotkey::set_sequence(const QKeySequence &value, QString &error) {
     sequence = value;
     return true;
 #else
-    error = "Глобальное сочетание требует сборку с поддержкой X11. Назначьте запуск XLibrary средствами системы.";
+    error = QCoreApplication::translate(
+        "XLibrary", "The global shortcut requires an X11-enabled build. Assign XLibrary using system settings.");
     return false;
 #endif
 }
@@ -862,7 +893,9 @@ bool GlobalHotkey::nativeEventFilter(const QByteArray &, void *, qintptr *) {
 
 QSet<QString> desktop_platform::running_paths(const QVector<app_record> &applications) {
     if (!QFileInfo("/proc/self/exe").exists())
-        throw std::runtime_error("Файловая система /proc недоступна: состояние процессов неизвестно.");
+        throw std::runtime_error(
+            QCoreApplication::translate("XLibrary", "The /proc filesystem is unavailable: process state is unknown.")
+                .toStdString());
     QSet<QString> result;
     QVector<QPair<QString, process_identity>> identities;
     for (const auto &application : applications) {
@@ -913,9 +946,12 @@ void desktop_platform::launch_application(const app_record &record) {
     }
     const auto executable = executable_path(command.takeFirst());
     if (executable.isEmpty())
-        throw std::runtime_error("Исполняемый файл приложения недоступен или не имеет разрешения на запуск.");
+        throw std::runtime_error(
+            QCoreApplication::translate("XLibrary", "The application executable is unavailable or is not executable.")
+                .toStdString());
     if (!directory.isEmpty() && (!QFileInfo(directory).isAbsolute() || !QFileInfo(directory).isDir()))
-        throw std::runtime_error("Рабочая папка приложения недоступна.");
+        throw std::runtime_error(
+            QCoreApplication::translate("XLibrary", "The application working directory is unavailable.").toStdString());
     QProcess process;
     process.setProcessEnvironment(application_environment());
     process.setProgram(executable);
@@ -923,13 +959,17 @@ void desktop_platform::launch_application(const app_record &record) {
     if (!directory.isEmpty())
         process.setWorkingDirectory(directory);
     if (!process.startDetached())
-        throw std::runtime_error(
-            QString("Не удалось запустить приложение: %1").arg(process.errorString()).toStdString());
+        throw std::runtime_error(QCoreApplication::translate("XLibrary", "Could not launch the application: %1")
+                                     .arg(process.errorString())
+                                     .toStdString());
 }
 
 void desktop_platform::open_folder(const QString &path) {
     if (!open_url(QUrl::fromLocalFile(QFileInfo(path).absolutePath())))
-        throw std::runtime_error("Не удалось открыть папку приложения. Проверьте доступность xdg-open.");
+        throw std::runtime_error(
+            QCoreApplication::translate("XLibrary",
+                                        "Could not open the application folder. Check that xdg-open is available.")
+                .toStdString());
 }
 
 bool desktop_platform::open_url(const QUrl &url) {
@@ -975,7 +1015,8 @@ app_record desktop_platform::resolve_application(const QString &path) {
     result.path = absolute_path(path);
     const QFileInfo info(result.path);
     if (!info.isFile())
-        throw std::invalid_argument("Файл приложения недоступен.");
+        throw std::invalid_argument(
+            QCoreApplication::translate("XLibrary", "The application file is unavailable.").toStdString());
     if (info.suffix() == "desktop") {
         const auto entry = read_entry(result.path);
         validate_entry(entry);
@@ -983,7 +1024,8 @@ app_record desktop_platform::resolve_application(const QString &path) {
         result.working_directory = entry.values.value("Path");
     } else {
         if (!info.isExecutable())
-            throw std::invalid_argument("Файл не имеет разрешения на запуск.");
+            throw std::invalid_argument(
+                QCoreApplication::translate("XLibrary", "The file is not executable.").toStdString());
         result.name = info.completeBaseName();
     }
     return result;
@@ -993,7 +1035,7 @@ QVector<app_record> desktop_platform::discover(bool system_applications, bool us
                                                QVector<discovery_issue> &issues, const std::atomic_bool &cancelled,
                                                const std::function<void(const discovery_progress &)> &progress) {
     if (progress)
-        progress({-1, 0, 0, "Подготовка списка приложений XDG…"});
+        progress({-1, 0, 0, QCoreApplication::translate("XLibrary", "Preparing the XDG application list…")});
     QStringList entries;
     QSet<QString> desktop_ids;
     const auto directories = application_directories();
@@ -1001,7 +1043,8 @@ QVector<app_record> desktop_platform::discover(bool system_applications, bool us
         const auto &directory = directories[index];
         const QFileInfo directory_info(directory);
         if (directory_info.isDir() && !directory_info.isReadable()) {
-            issues.append(discovery_issue{directory, "Нет доступа к папке приложений."});
+            issues.append(discovery_issue{
+                directory, QCoreApplication::translate("XLibrary", "Cannot access the application folder.")});
             continue;
         }
         QDirIterator files(directory, {"*.desktop"}, QDir::Files, QDirIterator::Subdirectories);
@@ -1013,8 +1056,11 @@ QVector<app_record> desktop_platform::discover(bool system_applications, bool us
             desktop_id.replace('/', '-');
             if (desktop_ids.contains(desktop_id)) {
                 if ((index == 0 && user_applications) || (index > 0 && system_applications))
-                    issues.append(discovery_issue{path, "Запись переопределена источником с более высоким приоритетом.",
-                                                  discovery_issue_kind::duplicate});
+                    issues.append(
+                        discovery_issue{path,
+                                        QCoreApplication::translate(
+                                            "XLibrary", "An entry from a higher-priority source overrides this entry."),
+                                        discovery_issue_kind::duplicate});
                 continue;
             }
             desktop_ids.insert(desktop_id);
@@ -1028,13 +1074,16 @@ QVector<app_record> desktop_platform::discover(bool system_applications, bool us
         if (cancelled.load())
             return {};
         if (progress)
-            progress(
-                {static_cast<int>(90.0 * index / entries.size()), index, entries.size(), "Проверка записей .desktop"});
+            progress({static_cast<int>(90.0 * index / entries.size()), index, entries.size(),
+                      QCoreApplication::translate("XLibrary", "Checking .desktop entries")});
         try {
             const auto entry = read_entry(entries[index]);
             if (!visible_entry(entry)) {
                 issues.append(discovery_issue{
-                    entry.path, "Запись скрыта, не является приложением или не подходит текущему рабочему столу.",
+                    entry.path,
+                    QCoreApplication::translate(
+                        "XLibrary",
+                        "The entry is hidden, is not an application, or does not match the current desktop."),
                     discovery_issue_kind::skipped});
                 continue;
             }
@@ -1044,7 +1093,8 @@ QVector<app_record> desktop_platform::discover(bool system_applications, bool us
         }
     }
     if (progress)
-        progress({90, entries.size(), entries.size(), "Проверка приложений завершена"});
+        progress({90, entries.size(), entries.size(),
+                  QCoreApplication::translate("XLibrary", "Application checks complete")});
     return cancelled.load() ? QVector<app_record>{} : result;
 }
 
@@ -1062,12 +1112,12 @@ bool desktop_platform::set_autostart(bool enabled, QString &error) {
     }
     const auto directory = xdg_home("XDG_CONFIG_HOME", "/.config") + "/autostart";
     if (!QDir().mkpath(directory)) {
-        error = "Не удалось создать папку автозапуска XDG.";
+        error = QCoreApplication::translate("XLibrary", "Could not create the XDG autostart folder.");
         return false;
     }
     QSaveFile file(directory + "/io.github.LapplandJulia.XLibrary.desktop");
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        error = "Не удалось открыть файл автозапуска: " + file.errorString();
+        error = QCoreApplication::translate("XLibrary", "Could not open the autostart file: ") + file.errorString();
         return false;
     }
     const auto content = enabled ? "[Desktop Entry]\nType=Application\nName=XLibrary\nExec=" + exec_quote(executable) +
@@ -1075,7 +1125,7 @@ bool desktop_platform::set_autostart(bool enabled, QString &error) {
                                  : QString("[Desktop Entry]\nType=Application\nName=XLibrary\nHidden=true\n");
     const auto bytes = content.toUtf8();
     if (file.write(bytes) != bytes.size() || !file.commit()) {
-        error = "Не удалось сохранить автозапуск XDG: " + file.errorString();
+        error = QCoreApplication::translate("XLibrary", "Could not save XDG autostart: ") + file.errorString();
         return false;
     }
     return true;

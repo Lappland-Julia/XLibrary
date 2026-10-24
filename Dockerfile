@@ -2,7 +2,7 @@ FROM debian:13
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates build-essential cmake ninja-build \
-    qt6-base-dev qt6-wayland libx11-dev \
+    qt6-base-dev qt6-wayland qt6-tools-dev qt6-l10n-tools libx11-dev \
     xvfb xauth dbus-x11 desktop-file-utils \
     && rm -rf /var/lib/apt/lists/*
 

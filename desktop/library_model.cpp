@@ -6,6 +6,7 @@
 #include <QTimer>
 
 #include "library_model.h"
+#include "localization.h"
 #include "path_helpers.h"
 #include "platform_integration.h"
 
@@ -73,7 +74,9 @@ QVariant LibraryModel::data(const QModelIndex &index, int requested_role) const 
             return record.name;
         if (index.column() == 1)
             return record.tags.join(", ");
-        return record.running ? "Запущено" : record.available ? "Не запущено" : "Недоступно";
+        return record.running     ? QCoreApplication::translate("XLibrary", "Running")
+               : record.available ? QCoreApplication::translate("XLibrary", "Not running")
+                                  : QCoreApplication::translate("XLibrary", "Unavailable");
     case Qt::ToolTipRole:
         return record.name + '\n' + QDir::toNativeSeparators(record.path);
     case Qt::DecorationRole:
@@ -102,10 +105,13 @@ QVariant LibraryModel::data(const QModelIndex &index, int requested_role) const 
 
 QVariant LibraryModel::headerData(int section, Qt::Orientation orientation, int requested_role) const {
     if (orientation == Qt::Horizontal && requested_role == Qt::DisplayRole) {
-        return QStringList{"Приложение", "Теги", "Статус"}.value(section);
+        return QStringList{QCoreApplication::translate("XLibrary", "Application"),
+                           QCoreApplication::translate("XLibrary", "Tags"),
+                           QCoreApplication::translate("XLibrary", "Status")}
+            .value(section);
     }
     if (orientation == Qt::Horizontal && requested_role == Qt::ToolTipRole) {
-        return "Нажмите для сортировки. Повторный щелчок меняет направление.";
+        return QCoreApplication::translate("XLibrary", "Click to sort. Click again to reverse the order.");
     }
     return {};
 }

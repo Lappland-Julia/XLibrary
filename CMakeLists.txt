@@ -61,6 +61,7 @@ if(WIN32)
 endif()
 include(GNUInstallDirs)
 find_package(Qt6 6.5 REQUIRED COMPONENTS Widgets Concurrent Network)
+find_package(Qt6 6.5 REQUIRED COMPONENTS LinguistTools)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     find_package(Qt6 6.5 REQUIRED COMPONENTS DBus)
     find_package(X11)
@@ -135,6 +136,7 @@ qt_add_executable(XLibrary WIN32
         desktop/platform_integration.h
         desktop/path_helpers.h
         desktop/application_paths.h
+        desktop/localization.h desktop/localization.cpp
         desktop/library_model.h desktop/library_model.cpp
         desktop/desktop_service.h desktop/desktop_service.cpp
         desktop/appearance.h desktop/appearance.cpp
@@ -147,6 +149,13 @@ qt_add_executable(XLibrary WIN32
         desktop/main_window.h desktop/main_window.cpp
 )
 set_target_properties(XLibrary PROPERTIES AUTOMOC ON)
+qt_add_lrelease(XLibrary TS_FILES translations/xlibrary_ru.ts translations/qt_widgets_ru.ts
+        QM_FILES_OUTPUT_VARIABLE xlibrary_qm_files)
+qt_add_resources(XLibrary application_translations
+        PREFIX "/i18n"
+        BASE "${CMAKE_CURRENT_BINARY_DIR}"
+        FILES ${xlibrary_qm_files}
+)
 if(WIN32)
     target_sources(XLibrary PRIVATE desktop/windows_integration.cpp assets/application_icon.rc)
     target_include_directories(XLibrary PRIVATE "$<$<COMPILE_LANGUAGE:RC>:${CMAKE_CURRENT_SOURCE_DIR}>")

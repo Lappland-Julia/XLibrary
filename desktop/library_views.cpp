@@ -24,6 +24,7 @@
 #include "appearance.h"
 #include "desktop_service.h"
 #include "library_views.h"
+#include "localization.h"
 #include "selection_button.h"
 #include "ui_helpers.h"
 
@@ -203,10 +204,10 @@ QWidget *navigation(const ui_context &context, QWidget *parent) {
     layout->addSpacing(16);
     auto *group = new QButtonGroup(widget);
     group->setExclusive(true);
-    const QList<QStringList> links{{"library", "Библиотека", "library"},
-                                   {"favorites", "Избранное", "favorite"},
-                                   {"running", "Запущенные", "play"},
-                                   {"scenarios", "Сценарии", "scenarios"}};
+    const QList<QStringList> links{{"library", QCoreApplication::translate("XLibrary", "Library"), "library"},
+                                   {"favorites", QCoreApplication::translate("XLibrary", "Favorites"), "favorite"},
+                                   {"running", QCoreApplication::translate("XLibrary", "Running applications"), "play"},
+                                   {"scenarios", QCoreApplication::translate("XLibrary", "Scenarios"), "scenarios"}};
     for (const auto &link : links) {
         auto *item = new SelectionButton(link[1]);
         item->setIcon(appearance::icon(link[2]));
@@ -218,7 +219,7 @@ QWidget *navigation(const ui_context &context, QWidget *parent) {
         QObject::connect(item, &QPushButton::clicked, widget, [=] { service->navigate(link[0]); });
     }
     layout->addSpacing(20);
-    layout->addWidget(label("Мои теги", "muted"));
+    layout->addWidget(label(QCoreApplication::translate("XLibrary", "My tags"), "muted"));
     auto *tags = new QListWidget;
     tags->setObjectName("tag_list");
     tags->setProperty("panel", true);
@@ -261,15 +262,17 @@ QWidget *navigation(const ui_context &context, QWidget *parent) {
             return;
         const auto tag = item->data(Qt::UserRole).toString();
         QMenu menu;
-        auto *edit = menu.addAction("Переименовать");
-        auto *remove = menu.addAction("Удалить тег");
+        auto *edit = menu.addAction(QCoreApplication::translate("XLibrary", "Rename"));
+        auto *remove = menu.addAction(QCoreApplication::translate("XLibrary", "Remove tag"));
         const auto *chosen = menu.exec(tags->viewport()->mapToGlobal(position));
         if (chosen == edit) {
             auto edit_context = context;
             edit_context.parameters.insert("tag", tag);
             open_dialog("tag_editor", edit_context);
         }
-        if (chosen == remove && confirm(widget, "Удалить тег", "Удалить #" + tag + " у всех приложений?"))
+        if (chosen == remove && confirm(widget, QCoreApplication::translate("XLibrary", "Remove tag"),
+                                        QCoreApplication::translate("XLibrary", "Remove #") + tag +
+                                            QCoreApplication::translate("XLibrary", " from all applications?")))
             service->remove_tag(tag);
     });
     layout->addWidget(action_button(context.actions.value("add_tag"), true));
@@ -287,8 +290,8 @@ QWidget *search_bar(const ui_context &context, QWidget *parent) {
     layout->setSpacing(12);
     auto *search = new SearchInput;
     search->setObjectName("search_input");
-    search->setAccessibleName("Поиск приложений и тегов");
-    search->setPlaceholderText("Найти приложение или #тег");
+    search->setAccessibleName(QCoreApplication::translate("XLibrary", "Search applications and tags"));
+    search->setPlaceholderText(QCoreApplication::translate("XLibrary", "Find an application or #tag"));
     search->setClearButtonEnabled(true);
     search->setMinimumHeight(26);
     search->addAction(appearance::icon("search"), QLineEdit::LeadingPosition);
@@ -326,7 +329,7 @@ QWidget *search_bar(const ui_context &context, QWidget *parent) {
     };
     layout->addWidget(search, 1);
     auto *settings = action_button(context.actions.value("settings"), false, "");
-    settings->setAccessibleName("Настройки");
+    settings->setAccessibleName(QCoreApplication::translate("XLibrary", "Settings"));
     settings->setFixedWidth(44);
     layout->addWidget(settings);
     return widget;
@@ -339,22 +342,24 @@ QWidget *discovery_status(const ui_context &context, QWidget *parent) {
     container_layout->setContentsMargins(0, 0, 0, 0);
     auto *panel = new QFrame(container);
     container_layout->addWidget(panel);
-    auto *details = button("Подробности последнего сканирования…", "quiet");
+    auto *details = button(QCoreApplication::translate("XLibrary", "Last scan details…"), "quiet");
     container_layout->addWidget(details);
     const auto update_details = [=] { details->setVisible(!service->discovery_report().isEmpty()); };
     QObject::connect(service, &DesktopService::discovery_report_changed, container, update_details);
     update_details();
     QObject::connect(details, &QPushButton::clicked, container, [=] {
         QDialog dialog(container);
-        dialog.setWindowTitle("Подробности сканирования");
+        dialog.setWindowTitle(QCoreApplication::translate("XLibrary", "Scan details"));
         prepare_dialog(&dialog, context, QSize(760, 480));
         auto *dialog_layout = new QVBoxLayout(&dialog);
         auto *text = new QPlainTextEdit(service->discovery_report());
         text->setReadOnly(true);
-        text->setAccessibleName("Отчёт сканирования");
+        text->setAccessibleName(QCoreApplication::translate("XLibrary", "Scan report"));
         dialog_layout->addWidget(text);
         auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close);
-        auto *copy = buttons->addButton("Копировать всё", QDialogButtonBox::ActionRole);
+        buttons->button(QDialogButtonBox::Close)->setText(QCoreApplication::translate("XLibrary", "Close"));
+        auto *copy =
+            buttons->addButton(QCoreApplication::translate("XLibrary", "Copy all"), QDialogButtonBox::ActionRole);
         QObject::connect(copy, &QPushButton::clicked, &dialog,
                          [text] { QApplication::clipboard()->setText(text->toPlainText()); });
         QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
@@ -372,14 +377,14 @@ QWidget *discovery_status(const ui_context &context, QWidget *parent) {
     percentage->setObjectName("discovery_percentage");
     percentage->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     header->addWidget(percentage);
-    auto *cancel = button("Отмена", "quiet");
-    cancel->setAccessibleName("Отменить сканирование приложений");
+    auto *cancel = button(QCoreApplication::translate("XLibrary", "Cancel"), "quiet");
+    cancel->setAccessibleName(QCoreApplication::translate("XLibrary", "Cancel application scan"));
     QObject::connect(cancel, &QPushButton::clicked, service, &DesktopService::cancel_discovery);
     header->addWidget(cancel);
     layout->addLayout(header);
     auto *bar = new QProgressBar;
     bar->setObjectName("discovery_bar");
-    bar->setAccessibleName("Ход сканирования приложений");
+    bar->setAccessibleName(QCoreApplication::translate("XLibrary", "Application scan progress"));
     bar->setTextVisible(false);
     bar->setFixedHeight(8);
     layout->addWidget(bar);
@@ -399,14 +404,17 @@ QWidget *discovery_status(const ui_context &context, QWidget *parent) {
         if (!indeterminate)
             bar->setValue(progress.percent);
         percentage->setText(indeterminate ? "…" : QString::number(progress.percent) + '%');
-        counter->setText(indeterminate ? "Собираем записи из выбранных источников"
-                                       : QString(progress.percent < 90 ? "Проверено записей: %1 из %2"
-                                                                       : "Обработано кандидатов: %1 из %2")
-                                             .arg(progress.processed)
-                                             .arg(progress.total));
+        counter->setText(indeterminate
+                             ? QCoreApplication::translate("XLibrary", "Collecting entries from the selected sources")
+                             : QString(progress.percent < 90
+                                           ? QCoreApplication::translate("XLibrary", "Entries checked: %1 of %2")
+                                           : QCoreApplication::translate("XLibrary", "Candidates processed: %1 of %2"))
+                                   .arg(progress.processed)
+                                   .arg(progress.total));
         cancel->setVisible(active);
         cancel->setEnabled(service->can_cancel_discovery());
-        cancel->setText(service->is_cancelling_discovery() ? "Отмена…" : "Отмена");
+        cancel->setText(service->is_cancelling_discovery() ? QCoreApplication::translate("XLibrary", "Cancelling…")
+                                                           : QCoreApplication::translate("XLibrary", "Cancel"));
         if (!active) {
             QTimer::singleShot(1200, panel, [=] {
                 if (!service->is_discovering())
@@ -427,11 +435,14 @@ QWidget *library(const ui_context &context, QWidget *parent) {
     root->setContentsMargins(0, 0, 0, 0);
     root->setSpacing(12);
     auto *header = new QHBoxLayout;
-    auto *title = label("Библиотека", "heading");
+    auto *title = label(QCoreApplication::translate("XLibrary", "Library"), "heading");
     header->addWidget(title, 1);
     auto *sort = new QComboBox;
-    sort->addItems({"По названию", "Недавние запуски", "Сначала избранное", "По тегам", "По статусу"});
-    sort->setAccessibleName("Сортировка приложений");
+    sort->addItems(
+        {QCoreApplication::translate("XLibrary", "By name"), QCoreApplication::translate("XLibrary", "Recent launches"),
+         QCoreApplication::translate("XLibrary", "Favorites first"), QCoreApplication::translate("XLibrary", "By tags"),
+         QCoreApplication::translate("XLibrary", "By status")});
+    sort->setAccessibleName(QCoreApplication::translate("XLibrary", "Application sort order"));
     sort->setCurrentIndex(qBound(0, service->settings.value("library/sort", 0).toInt(), 4));
     const auto order =
         service->settings.value("library/sort_order", 0).toInt() == 1 ? Qt::DescendingOrder : Qt::AscendingOrder;
@@ -439,11 +450,13 @@ QWidget *library(const ui_context &context, QWidget *parent) {
     QObject::connect(sort, &QComboBox::currentIndexChanged, widget,
                      [=](int index) { service->filter.set_sort_mode(index); });
     header->addWidget(sort);
-    auto *remove = action_button(context.actions.value("remove_application"), false, "Удалить");
-    remove->setAccessibleName("Удалить выбранное приложение из библиотеки");
+    auto *remove = action_button(context.actions.value("remove_application"), false,
+                                 QCoreApplication::translate("XLibrary", "Remove"));
+    remove->setAccessibleName(
+        QCoreApplication::translate("XLibrary", "Remove the selected application from the library"));
     header->addWidget(remove);
     auto *scan = action_button(context.actions.value("discover"), false, "");
-    scan->setAccessibleName("Найти установленные приложения");
+    scan->setAccessibleName(QCoreApplication::translate("XLibrary", "Find installed applications"));
     scan->setFixedWidth(44);
     header->addWidget(scan);
     root->addLayout(header);
@@ -496,7 +509,7 @@ QWidget *library(const ui_context &context, QWidget *parent) {
     auto *empty = new QWidget;
     auto *empty_layout = new QVBoxLayout(empty);
     empty_layout->addStretch();
-    auto *empty_title = label("Загрузка библиотеки…", "subheading");
+    auto *empty_title = label(QCoreApplication::translate("XLibrary", "Loading the library…"), "subheading");
     empty_title->setAlignment(Qt::AlignCenter);
     empty_layout->addWidget(empty_title);
     auto *hint = label("", "muted");
@@ -508,7 +521,10 @@ QWidget *library(const ui_context &context, QWidget *parent) {
     stack->addWidget(empty);
     root->addWidget(stack_widget, 1);
     auto *footer = new QHBoxLayout;
-    footer->addWidget(label("↑↓  Выбор     Enter  Запустить     Delete  Удалить     Ctrl+K  Поиск", "caption"), 1);
+    footer->addWidget(label(QCoreApplication::translate(
+                                "XLibrary", "↑↓  Select     Enter  Launch     Delete  Remove     Ctrl+K  Search"),
+                            "caption"),
+                      1);
     auto *details = action_button(context.actions.value("details"), true);
     footer->addWidget(details);
     root->addLayout(footer);
@@ -516,13 +532,15 @@ QWidget *library(const ui_context &context, QWidget *parent) {
         const bool has_rows = service->filter.rowCount() > 0;
         stack->setCurrentWidget(has_rows ? static_cast<QWidget *>(view) : empty);
         if (!service->is_ready()) {
-            empty_title->setText("Загрузка библиотеки…");
+            empty_title->setText(QCoreApplication::translate("XLibrary", "Loading the library…"));
             first->hide();
         } else {
             const bool no_apps = service->model.rowCount() == 0;
-            empty_title->setText(no_apps ? "Добавьте первое приложение" : "Ничего не найдено");
-            hint->setText(no_apps ? "Выберите файл или найдите установленные приложения."
-                                  : "Измените запрос или выберите другой раздел.");
+            empty_title->setText(no_apps ? QCoreApplication::translate("XLibrary", "Add your first application")
+                                         : QCoreApplication::translate("XLibrary", "No results"));
+            hint->setText(no_apps
+                              ? QCoreApplication::translate("XLibrary", "Select a file or find installed applications.")
+                              : QCoreApplication::translate("XLibrary", "Change the query or select another section."));
             first->setVisible(no_apps);
         }
         if (!has_rows) {
@@ -568,9 +586,10 @@ QWidget *library(const ui_context &context, QWidget *parent) {
     QObject::connect(&service->filter, &QAbstractItemModel::modelReset, widget, update);
     QObject::connect(&service->filter, &QAbstractItemModel::layoutChanged, widget, update);
     QObject::connect(service, &DesktopService::navigation_changed, widget, [=] {
-        title->setText(service->section() == "favorites" ? "Избранное"
-                       : service->section() == "running" ? "Запущенные"
-                                                         : "Библиотека");
+        title->setText(service->section() == "favorites" ? QCoreApplication::translate("XLibrary", "Favorites")
+                       : service->section() == "running"
+                           ? QCoreApplication::translate("XLibrary", "Running applications")
+                           : QCoreApplication::translate("XLibrary", "Library"));
         update();
     });
     update();
@@ -586,7 +605,7 @@ QWidget *details(const ui_context &context, QWidget *parent) {
     root->setSpacing(12);
     auto *icon = new QLabel;
     icon->setFixedSize(56, 56);
-    auto *name = label("Выберите приложение", "application_title");
+    auto *name = label(QCoreApplication::translate("XLibrary", "Select an application"), "application_title");
     auto *status = label("", "muted");
     auto *identity = new QHBoxLayout;
     identity->setSpacing(12);
@@ -599,15 +618,16 @@ QWidget *details(const ui_context &context, QWidget *parent) {
     root->addLayout(identity);
     root->addSpacing(8);
     auto *tag_header = new QHBoxLayout;
-    tag_header->addWidget(label("Теги", "muted"), 1);
-    auto *edit_tags = action_button(context.actions.value("edit_application"), true, "Изменить");
-    edit_tags->setAccessibleName("Изменить теги приложения");
+    tag_header->addWidget(label(QCoreApplication::translate("XLibrary", "Tags"), "muted"), 1);
+    auto *edit_tags =
+        action_button(context.actions.value("edit_application"), true, QCoreApplication::translate("XLibrary", "Edit"));
+    edit_tags->setAccessibleName(QCoreApplication::translate("XLibrary", "Edit application tags"));
     tag_header->addWidget(edit_tags);
     root->addLayout(tag_header);
     auto *tags = label("—");
     root->addWidget(tags);
     root->addSpacing(8);
-    root->addWidget(label("Путь к приложению", "muted"));
+    root->addWidget(label(QCoreApplication::translate("XLibrary", "Application path"), "muted"));
     auto *path = new QLineEdit;
     path->setReadOnly(true);
     path->setMinimumWidth(0);
@@ -615,7 +635,7 @@ QWidget *details(const ui_context &context, QWidget *parent) {
     path_row->setSpacing(8);
     path_row->addWidget(path, 1);
     auto *folder = action_button(context.actions.value("open_folder"), false, "");
-    folder->setAccessibleName("Открыть папку приложения");
+    folder->setAccessibleName(QCoreApplication::translate("XLibrary", "Open application folder"));
     folder->setFixedWidth(44);
     path_row->addWidget(folder);
     root->addLayout(path_row);
@@ -633,16 +653,19 @@ QWidget *details(const ui_context &context, QWidget *parent) {
     root->addStretch();
     auto update = [=] {
         const auto *record = service->selected();
-        name->setText(record ? record->name : "Выберите приложение");
-        status->setText(record ? record->running     ? "● Запущено"
-                                 : record->available ? "Не запущено"
-                                                     : "Файл недоступен"
-                               : "Сведения появятся здесь.");
-        tags->setText(record && !record->tags.isEmpty() ? '#' + record->tags.join("   #") : "Нет тегов");
+        name->setText(record ? record->name : QCoreApplication::translate("XLibrary", "Select an application"));
+        status->setText(record ? record->running     ? QCoreApplication::translate("XLibrary", "● Running")
+                                 : record->available ? QCoreApplication::translate("XLibrary", "Not running")
+                                                     : QCoreApplication::translate("XLibrary", "File unavailable")
+                               : QCoreApplication::translate("XLibrary", "Details will appear here."));
+        tags->setText(record && !record->tags.isEmpty() ? '#' + record->tags.join("   #")
+                                                        : QCoreApplication::translate("XLibrary", "No tags"));
         path->setText(record ? QDir::toNativeSeparators(record->path) : QString{});
         path->setCursorPosition(0);
         path->setToolTip(path->text());
-        arguments->setText(record && !record->arguments.isEmpty() ? "Аргументы: " + record->arguments : QString{});
+        arguments->setText(record && !record->arguments.isEmpty()
+                               ? QCoreApplication::translate("XLibrary", "Arguments: ") + record->arguments
+                               : QString{});
         arguments->setVisible(!arguments->text().isEmpty());
         QIcon image = appearance::icon("app");
         if (record)
@@ -681,21 +704,22 @@ QWidget *scenarios(const ui_context &context, QWidget *parent) {
     auto *root = new QVBoxLayout(widget);
     root->setContentsMargins(0, 0, 0, 0);
     auto *header = new QHBoxLayout;
-    header->addWidget(label("Сценарии", "heading"), 1);
+    header->addWidget(label(QCoreApplication::translate("XLibrary", "Scenarios"), "heading"), 1);
     header->addWidget(action_button(context.actions.value("add_scenario")));
     root->addLayout(header);
     auto *list = new QListWidget;
     list->setSpacing(2);
     root->addWidget(list, 1);
-    auto *empty = label("Создайте сценарий, чтобы открыть несколько приложений по порядку.", "muted");
+    auto *empty = label(
+        QCoreApplication::translate("XLibrary", "Create a scenario to open several applications in order."), "muted");
     root->addWidget(empty);
     auto *status = label("", "muted");
     root->addWidget(status);
     auto *tools = new QHBoxLayout;
-    auto *run = button("Запустить сценарий", "primary");
-    auto *edit = button("Изменить");
-    auto *remove = button("Удалить");
-    auto *stop = button("Остановить");
+    auto *run = button(QCoreApplication::translate("XLibrary", "Run scenario"), "primary");
+    auto *edit = button(QCoreApplication::translate("XLibrary", "Edit"));
+    auto *remove = button(QCoreApplication::translate("XLibrary", "Remove"));
+    auto *stop = button(QCoreApplication::translate("XLibrary", "Stop"));
     tools->addWidget(run);
     tools->addWidget(edit);
     tools->addWidget(remove);
@@ -706,8 +730,10 @@ QWidget *scenarios(const ui_context &context, QWidget *parent) {
         const auto selected = list->currentItem() ? list->currentItem()->data(Qt::UserRole).toLongLong() : 0;
         list->clear();
         for (const auto &record : service->catalog().scenarios) {
-            auto *item = new QListWidgetItem(appearance::icon("scenarios"),
-                                             record.name + QString("\nПриложений: %1").arg(record.steps.size()), list);
+            auto *item = new QListWidgetItem(
+                appearance::icon("scenarios"),
+                record.name + QCoreApplication::translate("XLibrary", "\nApplications: %1").arg(record.steps.size()),
+                list);
             item->setData(Qt::UserRole, record.id);
             item->setSizeHint({100, 64});
             if (record.id == selected)
@@ -741,7 +767,8 @@ QWidget *scenarios(const ui_context &context, QWidget *parent) {
             }
     });
     QObject::connect(remove, &QPushButton::clicked, widget, [=] {
-        if (list->currentItem() && confirm(widget, "Удалить сценарий", "Удалить выбранный сценарий?"))
+        if (list->currentItem() && confirm(widget, QCoreApplication::translate("XLibrary", "Remove scenario"),
+                                           QCoreApplication::translate("XLibrary", "Remove the selected scenario?")))
             service->remove_scenario(list->currentItem()->data(Qt::UserRole).toLongLong());
     });
     QObject::connect(stop, &QPushButton::clicked, service, &DesktopService::cancel_scenario);
@@ -764,12 +791,12 @@ void register_library_views(UiRegistry &registry) {
     registry.add_default("details", details);
     registry.add_default("details_dialog", [](const ui_context &context, QWidget *parent) {
         auto *dialog = new QDialog(parent);
-        dialog->setWindowTitle("Сведения о приложении");
+        dialog->setWindowTitle(QCoreApplication::translate("XLibrary", "Application details"));
         prepare_dialog(dialog, context, {400, 660}, {300, 320});
         auto *layout = new QVBoxLayout(dialog);
         layout->setContentsMargins(0, 0, 0, 0);
         layout->addWidget(context.registry->create("details", context, dialog), 1);
-        auto *close = button("Закрыть");
+        auto *close = button(QCoreApplication::translate("XLibrary", "Close"));
         layout->addWidget(close);
         QObject::connect(close, &QPushButton::clicked, dialog, &QDialog::accept);
         return dialog;

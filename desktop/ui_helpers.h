@@ -13,6 +13,7 @@
 #include <QVBoxLayout>
 
 #include "appearance.h"
+#include "localization.h"
 #include "platform_integration.h"
 #include "ui_registry.h"
 
@@ -143,11 +144,11 @@ inline void prepare_dialog(QDialog *dialog, const ui_context &context, const QSi
                        .boundedTo(available));
 }
 inline bool confirm(QWidget *parent, const QString &title, const QString &text,
-                    const QString &accept_text = QStringLiteral("Удалить")) {
+                    const QString &accept_text = QCoreApplication::translate("XLibrary", "Remove")) {
     QMessageBox dialog(QMessageBox::Question, title, text, QMessageBox::Yes | QMessageBox::Cancel, parent);
     dialog.setTextFormat(Qt::PlainText);
     dialog.button(QMessageBox::Yes)->setText(accept_text);
-    dialog.button(QMessageBox::Cancel)->setText("Отмена");
+    dialog.button(QMessageBox::Cancel)->setText(QCoreApplication::translate("XLibrary", "Cancel"));
     dialog.setDefaultButton(QMessageBox::Cancel);
     dialog.setEscapeButton(QMessageBox::Cancel);
     return dialog.exec() == QMessageBox::Yes;

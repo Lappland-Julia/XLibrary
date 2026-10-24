@@ -81,9 +81,9 @@ Press <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>Space</kbd> to bring up the librar
 
 ## Development
 
-XLibrary is built with **C++23**, **Qt 6 Widgets**, and **SQLite**. It targets **Windows 10/11 and Linux**. The current application interface is in Russian.
+XLibrary is built with **C++23**, **Qt 6 Widgets**, and **SQLite**. It targets **Windows 10/11 and Linux**. The interface supports English and Russian. It follows the system's preferred supported language by default and falls back to English. Choose a language in Settings → General and restart XLibrary to apply it. The application translation is embedded in the executable.
 
-Building from source requires a C++23 compiler, **CMake 3.21+**, and **Qt 6.5+** with the Widgets, Concurrent, and Network modules (plus DBus on Linux). CMake downloads SQLite during the initial configuration. See [Building on Windows and Linux](BUILDING.md) for CLion presets, GCC/Clang and MSVC/MinGW builds, portable packages, installers, and release verification.
+Building from source requires a C++23 compiler, **CMake 3.21+**, and **Qt 6.5+** with the Widgets, Concurrent, and Network modules, and the LinguistTools build tools (plus DBus on Linux). CMake downloads SQLite during the initial configuration. See [Building on Windows and Linux](BUILDING.md) for CLion presets, GCC/Clang and MSVC/MinGW builds, portable packages, installers, and release verification.
 
 Planned work includes a compact launcher mode, further search improvements, and extensibility. These are development directions rather than a release schedule.
 

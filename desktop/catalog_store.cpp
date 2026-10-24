@@ -6,6 +6,7 @@
 #include <stdexcept>
 
 #include "catalog_store.h"
+#include "localization.h"
 #include "path_helpers.h"
 
 namespace {
@@ -13,14 +14,18 @@ void validate_application(const app_record &record) {
     if (record.name.trimmed().isEmpty() || record.name.size() > 256 || !QFileInfo(record.path).isAbsolute() ||
         record.name.contains(QChar::Null) || record.path.contains(QChar::Null) ||
         record.arguments.contains(QChar::Null) || record.working_directory.contains(QChar::Null)) {
-        throw std::invalid_argument("Недопустимое название или путь приложения.");
+        throw std::invalid_argument(
+            QCoreApplication::translate("XLibrary", "Invalid application name or path.").toStdString());
     }
     if (!record.working_directory.isEmpty() && !QFileInfo(record.working_directory).isAbsolute()) {
-        throw std::invalid_argument("Рабочая папка должна быть абсолютным путём.");
+        throw std::invalid_argument(
+            QCoreApplication::translate("XLibrary", "The working directory must be an absolute path.").toStdString());
     }
     for (const auto &tag : record.tags) {
         if (!valid_tag_name(tag))
-            throw std::invalid_argument("Тег: до 64 символов, без пробелов, запятых и #.");
+            throw std::invalid_argument(
+                QCoreApplication::translate("XLibrary", "Tag: up to 64 characters, without spaces, commas, or #.")
+                    .toStdString());
     }
 }
 
@@ -246,13 +251,16 @@ qint64 CatalogStore::save_application(const app_record &record) {
     duplicate.bind(1, id);
     while (duplicate.next()) {
         if (duplicate.text(1) == record.name || normalized_path(duplicate.text(2)) == normalized_path(record.path)) {
-            throw std::runtime_error("Приложение с таким именем или путём уже есть в библиотеке.");
+            throw std::runtime_error(QCoreApplication::translate(
+                                         "XLibrary", "An application with this name or path is already in the library.")
+                                         .toStdString());
         }
     }
     if (id == 0) {
         const auto name = record.name.toUtf8();
         if (!database.add_application(std::string(name.constData(), name.size()), filesystem_path(record.path)))
-            throw std::runtime_error("Приложение уже есть в библиотеке.");
+            throw std::runtime_error(
+                QCoreApplication::translate("XLibrary", "The application is already in the library.").toStdString());
         id = sqlite3_last_insert_rowid(connection);
     } else {
         Statement update(connection, "UPDATE applications SET name = ?, path = ? WHERE id = ?;");
@@ -261,7 +269,9 @@ qint64 CatalogStore::save_application(const app_record &record) {
         update.bind(3, id);
         update.next();
         if (sqlite3_changes(connection) == 0) {
-            throw std::runtime_error("Приложение уже удалено из библиотеки.");
+            throw std::runtime_error(
+                QCoreApplication::translate("XLibrary", "The application has already been removed from the library.")
+                    .toStdString());
         }
     }
     write_metadata(id, record);
@@ -277,12 +287,13 @@ void CatalogStore::remove_application(qint64 id) {
 
 void CatalogStore::save_tag(const QString &old_name, const QString &new_name) {
     if (!valid_tag_name(new_name))
-        throw std::invalid_argument("Недопустимое название тега.");
+        throw std::invalid_argument(QCoreApplication::translate("XLibrary", "Invalid tag name.").toStdString());
     Transaction transaction(database.get_connection());
     Statement existing(database.get_connection(), "SELECT name FROM tags;");
     while (existing.next()) {
         if (existing.text(0) != old_name && existing.text(0).compare(new_name, Qt::CaseInsensitive) == 0) {
-            throw std::invalid_argument("Тег с таким именем уже существует.");
+            throw std::invalid_argument(
+                QCoreApplication::translate("XLibrary", "A tag with this name already exists.").toStdString());
         }
     }
     Statement statement(database.get_connection(), old_name.isEmpty() ? "INSERT INTO tags(name) VALUES(?);"
@@ -304,7 +315,9 @@ void CatalogStore::remove_tag(const QString &name) {
 qint64 CatalogStore::save_scenario(const scenario_record &record) {
     if (record.name.trimmed().isEmpty() || record.name.size() > 128 || record.steps.isEmpty() ||
         record.steps.size() > 1000) {
-        throw std::invalid_argument("Укажите название сценария и от 1 до 1000 шагов.");
+        throw std::invalid_argument(
+            QCoreApplication::translate("XLibrary", "Enter a scenario name and between 1 and 1000 steps.")
+                .toStdString());
     }
     auto *connection = database.get_connection();
     Transaction transaction(connection);
@@ -382,18 +395,23 @@ catalog_import_result CatalogStore::import_records(const QVector<app_record> &re
         if (names.contains(record.name) || paths.contains(path)) {
             ++result.duplicates;
             if (issues)
-                issues->append(discovery_issue{record.path,
-                                               names.contains(record.name)
-                                                   ? "В библиотеке уже есть запись с таким именем."
-                                                   : "В библиотеке уже есть запись с таким путём.",
-                                               discovery_issue_kind::duplicate});
+                issues->append(discovery_issue{
+                    record.path,
+                    names.contains(record.name)
+                        ? QCoreApplication::translate("XLibrary",
+                                                      "The library already contains an entry with this name.")
+                        : QCoreApplication::translate("XLibrary",
+                                                      "The library already contains an entry with this path."),
+                    discovery_issue_kind::duplicate});
         } else {
             validate_application(record);
             if (!database.add_application(record.name.toStdString(), filesystem_path(record.path))) {
                 ++result.duplicates;
                 if (issues)
-                    issues->append(
-                        discovery_issue{record.path, "Запись уже существует в базе.", discovery_issue_kind::duplicate});
+                    issues->append(discovery_issue{
+                        record.path,
+                        QCoreApplication::translate("XLibrary", "The entry already exists in the database."),
+                        discovery_issue_kind::duplicate});
                 continue;
             }
             const auto id = sqlite3_last_insert_rowid(database.get_connection());
