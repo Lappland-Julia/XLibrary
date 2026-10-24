@@ -3,9 +3,11 @@
 #include <QFutureWatcher>
 #include <QRegularExpression>
 #include <QtConcurrent/QtConcurrentRun>
+#include <QTimer>
 
 #include "library_model.h"
-#include "windows_integration.h"
+#include "path_helpers.h"
+#include "platform_integration.h"
 
 LibraryModel::LibraryModel(QObject *parent) : QAbstractTableModel(parent) {
     icon_pool.setMaxThreadCount(2);
@@ -31,6 +33,18 @@ void LibraryModel::request_icon(const QString &path) const {
     }
     pending_icons.insert(path);
     auto *self = const_cast<LibraryModel *>(this);
+#ifdef Q_OS_LINUX
+    // Системные icon engines используют QPixmap и должны выполняться в GUI-потоке.
+    QTimer::singleShot(0, self, [self, path] {
+        const auto image = desktop_platform::application_icon(path);
+        self->pending_icons.remove(path);
+        self->icons.insert(path, new QIcon(image.isNull() ? QIcon{} : QIcon(QPixmap::fromImage(image))));
+        for (int row = 0; row < self->records.size(); ++row) {
+            if (self->records[row].path == path)
+                emit self->dataChanged(self->index(row, 0), self->index(row, 0), {Qt::DecorationRole});
+        }
+    });
+#else
     auto *watcher = new QFutureWatcher<QImage>(self);
     connect(watcher, &QFutureWatcher<QImage>::finished, self, [self, watcher, path] {
         const auto image = watcher->result();
@@ -43,7 +57,9 @@ void LibraryModel::request_icon(const QString &path) const {
             }
         }
     });
-    watcher->setFuture(QtConcurrent::run(&self->icon_pool, [path] { return desktop_windows::application_icon(path); }));
+    watcher->setFuture(
+        QtConcurrent::run(&self->icon_pool, [path] { return desktop_platform::application_icon(path); }));
+#endif
 }
 
 QVariant LibraryModel::data(const QModelIndex &index, int requested_role) const {
@@ -124,7 +140,7 @@ QHash<int, QByteArray> LibraryModel::roleNames() const {
 
 void LibraryModel::update_running(const QSet<QString> &paths) {
     for (int row = 0; row < records.size(); ++row) {
-        const bool running = paths.contains(QDir::fromNativeSeparators(records[row].path).toCaseFolded());
+        const bool running = paths.contains(normalized_path(records[row].path));
         if (records[row].running != running) {
             records[row].running = running;
             emit dataChanged(index(row, 0), index(row, 2), {Qt::DisplayRole, running_role, record_role});

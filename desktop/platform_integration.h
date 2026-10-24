@@ -1,24 +1,31 @@
-#ifndef XLIBRARY_WINDOWS_INTEGRATION_H
-#define XLIBRARY_WINDOWS_INTEGRATION_H
+#ifndef XLIBRARY_PLATFORM_INTEGRATION_H
+#define XLIBRARY_PLATFORM_INTEGRATION_H
 
 #include <atomic>
 #include <functional>
+#include <memory>
 #include <QAbstractNativeEventFilter>
 #include <QImage>
 #include <QKeySequence>
 #include <QObject>
 #include <QSet>
 
-#include "catalog_types.h"
 #include "Application.h"
+#include "catalog_types.h"
 
 class QWidget;
+class QUrl;
+#ifdef Q_OS_LINUX
+class LinuxHotkeyState;
+#endif
 
-namespace desktop_windows {
+namespace desktop_platform {
+QString default_global_shortcut();
 QSet<QString> running_paths(const QVector<app_record> &applications);
 bool activate_window(const QString &path);
 void launch_application(const app_record &record);
 void open_folder(const QString &path);
+bool open_url(const QUrl &url);
 QImage application_icon(const QString &path);
 app_record resolve_application(const QString &path);
 QVector<app_record> discover(bool registry, bool start_menu, QStringList &issues, const std::atomic_bool &cancelled,
@@ -34,6 +41,9 @@ private:
     int current_id = 0;
     int next_id = 1;
     QKeySequence sequence;
+#ifdef Q_OS_LINUX
+    std::unique_ptr<LinuxHotkeyState> linux_state;
+#endif
 
 public:
     explicit GlobalHotkey(QObject *parent = nullptr);

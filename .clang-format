@@ -33,6 +33,10 @@ IncludeCategories:
   - Regex: '^[<"](objbase|shellapi|tlhelp32|winver)\.h[>"]$'
     Priority: -30
     SortPriority: -30
+  # Системные заголовки Linux/POSIX и X11 идут перед C++ и Qt.
+  - Regex: '^<(sys/.*|linux/.*|X11/.*|xcb/.*|unistd\.h|dirent\.h|fcntl\.h|signal\.h|spawn\.h|poll\.h|pwd\.h)>'
+    Priority: -30
+    SortPriority: -30
   # Стандартная библиотека и прочие внешние зависимости подключаются через <>.
   - Regex: '^<'
     Priority: -20

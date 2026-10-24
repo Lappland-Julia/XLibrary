@@ -43,3 +43,5 @@ dist/
 release/
 build-*/
 cmake-build-*/
+CMakeUserPresets.json
+__pycache__/

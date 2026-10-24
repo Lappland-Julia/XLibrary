@@ -2,7 +2,6 @@
 #include <QApplication>
 #include <QCryptographicHash>
 #include <QDir>
-#include <QFileInfo>
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QLockFile>
@@ -12,6 +11,7 @@
 #include <QTimer>
 
 #include "desktop/appearance.h"
+#include "desktop/application_paths.h"
 #include "desktop/desktop_service.h"
 #include "desktop/main_window.h"
 
@@ -24,7 +24,7 @@ int main(int argc, char *argv[]) {
     application.setQuitOnLastWindowClosed(false);
     application.setStyle("Fusion");
     const bool check_startup = application.arguments().contains("--check-startup");
-    const bool portable = QFileInfo(application.applicationDirPath() + "/portable.flag").isFile();
+    const bool portable = application_paths::portable_mode();
     std::unique_ptr<QTemporaryDir> startup_profile;
     try {
         if (check_startup) {
@@ -32,9 +32,11 @@ int main(int argc, char *argv[]) {
             if (!startup_profile->isValid())
                 throw std::runtime_error("Не удалось создать временный профиль для проверки запуска.");
         }
-        const auto profile = check_startup ? startup_profile->path()
-                             : portable    ? application.applicationDirPath() + "/data"
-                                           : QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+        const auto appimage = check_startup ? QString{} : application_paths::appimage_file();
+        const auto profile = check_startup         ? startup_profile->path()
+                             : !appimage.isEmpty() ? appimage + ".data"
+                             : portable            ? application.applicationDirPath() + "/data"
+                                        : QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
         if (!QDir().mkpath(profile))
             throw std::runtime_error("Не удалось создать папку настроек XLibrary.");
         const auto server_name =

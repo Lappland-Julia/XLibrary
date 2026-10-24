@@ -18,14 +18,11 @@ if(POLICY CMP0138)
     cmake_policy(SET CMP0138 NEW)
 endif()
 
-# Текущая реализация приложения использует Windows API.
-if(NOT WIN32)
-    message(FATAL_ERROR
-            "XLibrary currently supports Windows only."
-    )
+if(WIN32)
+    enable_language(RC)
+elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(FATAL_ERROR "XLibrary supports Windows and Linux.")
 endif()
-
-enable_language(RC)
 
 # ------------------------------------------------------------
 # Стандарт языка
@@ -59,8 +56,15 @@ option(XLIBRARY_NATIVE_CPU
 
 include(FetchContent)
 find_package(Threads REQUIRED)
-set(CMAKE_INSTALL_BINDIR ".")
+if(WIN32)
+    set(CMAKE_INSTALL_BINDIR ".")
+endif()
+include(GNUInstallDirs)
 find_package(Qt6 6.5 REQUIRED COMPONENTS Widgets Concurrent Network)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_package(Qt6 6.5 REQUIRED COMPONENTS DBus)
+    find_package(X11)
+endif()
 
 FetchContent_Declare(sqlite3
         URL
@@ -108,28 +112,29 @@ add_library(xlibrary_core STATIC
         src/WindowManager.cpp
         src/WindowManager.h
 
-        src/RegistryScan.cpp
-        src/RegistryScan.h
 )
 
-target_compile_definitions(xlibrary_core PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN)
+if(WIN32)
+    target_sources(xlibrary_core PRIVATE src/RegistryScan.cpp src/RegistryScan.h)
+    target_compile_definitions(xlibrary_core PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_link_libraries(xlibrary_core PUBLIC version shell32 gdi32 advapi32)
+else()
+    target_sources(xlibrary_core PRIVATE src/linux_process.cpp src/linux_process.h)
+endif()
 target_include_directories(xlibrary_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(xlibrary_core PUBLIC
         sqlite3
         Threads::Threads
 
-        version
-        shell32
-        gdi32
-        advapi32
 )
 
 qt_add_executable(XLibrary WIN32
         main.cpp
-        assets/application_icon.rc
         desktop/catalog_types.h
         desktop/catalog_store.h desktop/catalog_store.cpp
-        desktop/windows_integration.h desktop/windows_integration.cpp
+        desktop/platform_integration.h
+        desktop/path_helpers.h
+        desktop/application_paths.h
         desktop/library_model.h desktop/library_model.cpp
         desktop/desktop_service.h desktop/desktop_service.cpp
         desktop/appearance.h desktop/appearance.cpp
@@ -142,13 +147,23 @@ qt_add_executable(XLibrary WIN32
         desktop/main_window.h desktop/main_window.cpp
 )
 set_target_properties(XLibrary PROPERTIES AUTOMOC ON)
-target_include_directories(XLibrary PRIVATE "$<$<COMPILE_LANGUAGE:RC>:${CMAKE_CURRENT_SOURCE_DIR}>")
-set_source_files_properties(assets/application_icon.rc PROPERTIES
-        OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/xlibrary.ico"
-)
-if(MINGW)
-    # windres через popen некорректно обрабатывает пробелы в пути к препроцессору.
-    set_property(SOURCE assets/application_icon.rc APPEND PROPERTY COMPILE_OPTIONS --use-temp-file)
+if(WIN32)
+    target_sources(XLibrary PRIVATE desktop/windows_integration.cpp assets/application_icon.rc)
+    target_include_directories(XLibrary PRIVATE "$<$<COMPILE_LANGUAGE:RC>:${CMAKE_CURRENT_SOURCE_DIR}>")
+    set_source_files_properties(assets/application_icon.rc PROPERTIES
+            OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/xlibrary.ico"
+    )
+    if(MINGW)
+        # windres через popen некорректно обрабатывает пробелы в пути к препроцессору.
+        set_property(SOURCE assets/application_icon.rc APPEND PROPERTY COMPILE_OPTIONS --use-temp-file)
+    endif()
+else()
+    target_sources(XLibrary PRIVATE desktop/linux_integration.cpp)
+    target_link_libraries(XLibrary PRIVATE Qt6::DBus)
+    if(X11_FOUND)
+        target_link_libraries(XLibrary PRIVATE X11::X11)
+        target_compile_definitions(XLibrary PRIVATE XLIBRARY_HAVE_X11=1)
+    endif()
 endif()
 qt_add_resources(XLibrary application_images
         PREFIX "/"
@@ -156,17 +171,20 @@ qt_add_resources(XLibrary application_images
 )
 target_compile_definitions(XLibrary PRIVATE XLIBRARY_VERSION="${PROJECT_VERSION}")
 
-target_link_libraries(XLibrary PRIVATE xlibrary_core Qt6::Widgets Qt6::Concurrent Qt6::Network ole32 uuid dwmapi)
+target_link_libraries(XLibrary PRIVATE xlibrary_core Qt6::Widgets Qt6::Concurrent Qt6::Network)
 
-configure_file(packaging/windows_version.rc.in windows_version.rc @ONLY)
-target_sources(XLibrary PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/windows_version.rc")
-if(MINGW)
-    set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/windows_version.rc" APPEND PROPERTY
-            COMPILE_OPTIONS --use-temp-file)
+if(WIN32)
+    target_link_libraries(XLibrary PRIVATE ole32 uuid dwmapi)
+    configure_file(packaging/windows_version.rc.in windows_version.rc @ONLY)
+    target_sources(XLibrary PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/windows_version.rc")
+    if(MINGW)
+        set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/windows_version.rc" APPEND PROPERTY
+                COMPILE_OPTIONS --use-temp-file)
+    endif()
+
+    # Метаданные выбранного toolchain нужны только явной упаковке.
+    configure_file(packaging/build_config.json.in packaging-config.json @ONLY)
 endif()
-
-# Метаданные выбранного toolchain нужны только явной упаковке.
-configure_file(packaging/build_config.json.in packaging-config.json @ONLY)
 
 if(MSVC)
     target_compile_options(XLibrary PRIVATE /utf-8 /W4)
@@ -174,13 +192,22 @@ else()
     target_compile_options(XLibrary PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-install(TARGETS XLibrary RUNTIME DESTINATION .)
-install(IMPORTED_RUNTIME_ARTIFACTS Qt6::Concurrent RUNTIME DESTINATION .)
-# Qt развёртывается только при install; CRT добавляет упаковщик из выбранного toolchain.
-qt_generate_deploy_app_script(TARGET XLibrary OUTPUT_SCRIPT xlibrary_deploy_script
-        NO_TRANSLATIONS NO_COMPILER_RUNTIME)
-install(SCRIPT "${xlibrary_deploy_script}")
-install(FILES LICENSE DESTINATION .)
+install(TARGETS XLibrary RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+if(WIN32)
+    install(IMPORTED_RUNTIME_ARTIFACTS Qt6::Concurrent RUNTIME DESTINATION .)
+    # Qt развёртывается только при install; CRT добавляет упаковщик из выбранного toolchain.
+    qt_generate_deploy_app_script(TARGET XLibrary OUTPUT_SCRIPT xlibrary_deploy_script
+            NO_TRANSLATIONS NO_COMPILER_RUNTIME)
+    install(SCRIPT "${xlibrary_deploy_script}")
+    install(FILES LICENSE DESTINATION .)
+else()
+    install(FILES packaging/io.github.LapplandJulia.XLibrary.desktop
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+    install(FILES assets/github_avatar_256.png DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps
+            RENAME io.github.LapplandJulia.XLibrary.png)
+    install(FILES LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/XLibrary)
+    include(packaging/linux_package.cmake)
+endif()
 
 # ------------------------------------------------------------
 # Release: O2

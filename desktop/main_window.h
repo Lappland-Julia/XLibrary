@@ -8,8 +8,8 @@
 #include <vector>
 
 #include "desktop_service.h"
+#include "platform_integration.h"
 #include "ui_registry.h"
-#include "windows_integration.h"
 
 class MainWindow : public QMainWindow {
     Q_OBJECT

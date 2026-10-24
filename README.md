@@ -2,7 +2,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/github_header_dark.png">
     <source media="(prefers-color-scheme: light)" srcset="assets/github_header_light.png">
-    <img src="assets/github_header_light.png" alt="XLibrary — Application launcher and organizer for Windows" width="100%">
+    <img src="assets/github_header_light.png" alt="XLibrary — Application launcher and organizer for Windows and Linux" width="100%">
   </picture>
 </p>
 
@@ -11,7 +11,8 @@
 <p align="center">
   <a href="https://github.com/Lappland-Julia/XLibrary/actions/workflows/windows-build.yml"><img src="https://github.com/Lappland-Julia/XLibrary/actions/workflows/windows-build.yml/badge.svg" alt="Windows build"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-68717C" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-68717C" alt="Platform: Windows 10 and 11">
+  <a href="https://github.com/Lappland-Julia/XLibrary/actions/workflows/linux-build.yml"><img src="https://github.com/Lappland-Julia/XLibrary/actions/workflows/linux-build.yml/badge.svg" alt="Linux build"></a>
+  <img src="https://img.shields.io/badge/platform-Windows%20%2F%20Linux-68717C" alt="Platform: Windows and Linux">
 </p>
 
 <p align="center">
@@ -24,7 +25,7 @@
 
 ## XLibrary
 
-XLibrary is an open-source application launcher and organizer for Windows. Bring your everyday tools, games, and portable apps into one library, organize them with tags, and launch them from a single place.
+XLibrary is an open-source application launcher and organizer for Windows and Linux. Bring your everyday tools, games, and portable apps into one library, organize them with tags, and launch them from a single place.
 
 An app can belong to more than one part of your day. Give your browser both `#work` and `#personal`, keep development tools under `#dev`, or create a launch scenario that opens everything you need for a project.
 
@@ -38,7 +39,7 @@ An app can belong to more than one part of your day. Give your browser both `#wo
 
 | | What you can do |
 | --- | --- |
-| **One application library** | Add apps manually or discover them through the Windows registry and Start menu shortcuts. |
+| **One application library** | Add apps manually or discover them through the Windows registry and Start menu, or Linux XDG desktop entries. |
 | **Tags and filters** | Assign multiple tags to an app and combine them with text search and exclusions. |
 | **Favorites and recent launches** | Keep frequently used apps close and sort your library by last launch. |
 | **Running apps** | See what is running, switch to an existing window when available, or open a new instance. |
@@ -59,13 +60,13 @@ Search by app name or executable filename, then narrow the results with your own
 | `#work -#games` | Apps tagged `work`, excluding those tagged `games` |
 | `#dev code` | Apps tagged `dev` that also match “code” |
 
-Press <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>Space</kbd> to bring up the library, or <kbd>Ctrl</kbd> + <kbd>K</kbd> to focus search. Both shortcuts can be changed in settings.
+Press <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>Space</kbd> to bring up the library, or <kbd>Ctrl</kbd> + <kbd>K</kbd> to focus search. Both shortcuts can be changed in settings. On Wayland, assign the global shortcut in your desktop settings to the `XLibrary` command.
 
 ## Development
 
-XLibrary is built with **C++23**, **Qt 6 Widgets**, and **SQLite**. It currently targets **Windows 10 and 11**. The current application interface is in Russian.
+XLibrary is built with **C++23**, **Qt 6 Widgets**, and **SQLite**. It targets **Windows 10/11 and Linux**. The current application interface is in Russian.
 
-Building from source requires a C++23 compiler, **CMake 3.21+**, and **Qt 6.5+** with the Widgets, Concurrent, and Network modules. CMake downloads SQLite during the initial configuration. See [Building and releasing on Windows](BUILDING.md) for CLion setup, MSVC/MinGW builds, portable packages, installers, and release verification.
+Building from source requires a C++23 compiler, **CMake 3.21+**, and **Qt 6.5+** with the Widgets, Concurrent, and Network modules (plus DBus on Linux). CMake downloads SQLite during the initial configuration. See [Building on Windows and Linux](BUILDING.md) for CLion presets, GCC/Clang and MSVC/MinGW builds, portable packages, installers, and release verification.
 
 Planned work includes a compact launcher mode, further search improvements, and extensibility. These are development directions rather than a release schedule.
 
@@ -73,7 +74,7 @@ Planned work includes a compact launcher mode, further search improvements, and 
 
 Help shape a library you would want to use every day. Bug reports, interface feedback, documentation improvements, and code contributions are all welcome.
 
-- **Report a bug:** [open an issue](https://github.com/Lappland-Julia/XLibrary/issues/new) with steps to reproduce, your Windows version, and screenshots where useful.
+- **Report a bug:** [open an issue](https://github.com/Lappland-Julia/XLibrary/issues/new) with steps to reproduce, your OS and desktop session, and screenshots where useful.
 - **Suggest an improvement:** [share your idea](https://github.com/Lappland-Julia/XLibrary/issues) and describe the workflow it would help with.
 - **Contribute code:** submit a pull request with a focused change. Please discuss larger features in an issue first.
 

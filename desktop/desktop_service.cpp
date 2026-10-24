@@ -14,7 +14,8 @@
 
 #include "catalog_store.h"
 #include "desktop_service.h"
-#include "windows_integration.h"
+#include "path_helpers.h"
+#include "platform_integration.h"
 
 class CatalogWorker : public QObject {
     Q_OBJECT
@@ -43,13 +44,13 @@ public:
     void refresh() {
         catalog = store->read();
         for (auto &record : catalog.applications)
-            record.running = last_running.contains(QDir::fromNativeSeparators(record.path).toCaseFolded());
+            record.running = last_running.contains(normalized_path(record.path));
         emit loaded(catalog);
         poll();
     }
     void poll() {
         try {
-            const auto paths = desktop_windows::running_paths(catalog.applications);
+            const auto paths = desktop_platform::running_paths(catalog.applications);
             monitor_error = false;
             if (paths != last_running) {
                 last_running = paths;
@@ -195,7 +196,7 @@ void DesktopService::save_application(app_record record) {
 
 void DesktopService::resolve_application(const QString &path) {
     enqueue("resolve",
-            [path](CatalogWorker &worker) { emit worker.resolved(path, desktop_windows::resolve_application(path)); });
+            [path](CatalogWorker &worker) { emit worker.resolved(path, desktop_platform::resolve_application(path)); });
 }
 
 void DesktopService::remove_application(qint64 id) {
@@ -258,8 +259,8 @@ void DesktopService::launch(qint64 id, bool new_instance, bool scenario) {
                                          [id](const auto &record) { return record.id == id; });
             if (it == worker.catalog.applications.cend())
                 throw std::runtime_error("Приложение не найдено в библиотеке.");
-            if (!activate || !desktop_windows::activate_window(it->path)) {
-                desktop_windows::launch_application(*it);
+            if (!activate || !desktop_platform::activate_window(it->path)) {
+                desktop_platform::launch_application(*it);
             }
             // Ошибка истории не должна превращать успешный запуск в неудачный или повторный.
             emit worker.launched(id, true, generation);
@@ -279,7 +280,7 @@ void DesktopService::launch(qint64 id, bool new_instance, bool scenario) {
 
 void DesktopService::open_folder(qint64 id) {
     if (const auto *record = model.find(id))
-        enqueue("folder", [path = record->path](CatalogWorker &) { desktop_windows::open_folder(path); });
+        enqueue("folder", [path = record->path](CatalogWorker &) { desktop_platform::open_folder(path); });
 }
 
 void DesktopService::run_scenario(qint64 id) {
@@ -394,7 +395,7 @@ void DesktopService::discover() {
     watcher->setFuture(
         QtConcurrent::run(&discovery_pool, [registry, start_menu, cancelled = discovery_cancelled, report_progress] {
             QStringList issues;
-            auto applications = desktop_windows::discover(registry, start_menu, issues, *cancelled, report_progress);
+            auto applications = desktop_platform::discover(registry, start_menu, issues, *cancelled, report_progress);
             return std::make_pair(std::move(applications), std::move(issues));
         }));
 }

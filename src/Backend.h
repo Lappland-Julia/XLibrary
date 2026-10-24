@@ -7,7 +7,9 @@
 #include "Database.h"
 #include "Heartbeat.h"
 #include "Manager.h"
+#ifdef _WIN32
 #include "RegistryScan.h"
+#endif
 #include "WindowManager.h"
 
 #endif //XLIBRARY_BACKEND_H

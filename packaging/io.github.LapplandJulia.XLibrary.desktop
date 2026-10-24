@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=XLibrary
+Comment=Application launcher and organizer
+Comment[ru]=Библиотека и запуск приложений
+Exec=XLibrary
+Icon=io.github.LapplandJulia.XLibrary
+Terminal=false
+Categories=Utility;
+StartupWMClass=XLibrary

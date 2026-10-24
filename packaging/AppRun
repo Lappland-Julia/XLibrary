@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+
+APPDIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+export APPDIR
+
+# Дочерние приложения должны получать исходные библиотеки и плагины рабочего стола.
+export XLIBRARY_ORIGINAL_LD_LIBRARY_PATH="${LD_LIBRARY_PATH-}"
+export XLIBRARY_ORIGINAL_LD_LIBRARY_PATH_SET="${LD_LIBRARY_PATH+x}"
+export XLIBRARY_ORIGINAL_QT_PLUGIN_PATH="${QT_PLUGIN_PATH-}"
+export XLIBRARY_ORIGINAL_QT_PLUGIN_PATH_SET="${QT_PLUGIN_PATH+x}"
+export XLIBRARY_ORIGINAL_QT_QPA_PLATFORM_PLUGIN_PATH="${QT_QPA_PLATFORM_PLUGIN_PATH-}"
+export XLIBRARY_ORIGINAL_QT_QPA_PLATFORM_PLUGIN_PATH_SET="${QT_QPA_PLATFORM_PLUGIN_PATH+x}"
+export XLIBRARY_APPIMAGE="${APPIMAGE-}"
+
+export LD_LIBRARY_PATH="$APPDIR/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export QT_PLUGIN_PATH="$APPDIR/usr/plugins"
+export QT_QPA_PLATFORM_PLUGIN_PATH="$APPDIR/usr/plugins/platforms"
+exec "$APPDIR/usr/bin/XLibrary" "$@"

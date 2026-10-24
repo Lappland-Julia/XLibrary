@@ -1,0 +1,118 @@
+name: Linux Build
+
+on:
+  push:
+    branches: [main, linux]
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-build:
+    name: ${{ matrix.preset }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: [linux-debug, linux-release, linux-clang-debug]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install build and desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build clang libx11-dev libgl1-mesa-dev libegl1 \
+            libxkbcommon-x11-0 libxcb-cursor0 xvfb xauth dbus-x11 desktop-file-utils
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4
+        with:
+          version: '6.8.3'
+          arch: linux_gcc_64
+          cache: true
+
+      - name: Configure
+        env:
+          BUILD_PRESET: ${{ matrix.preset }}
+        run: cmake --preset "$BUILD_PRESET"
+
+      - name: Build
+        env:
+          BUILD_PRESET: ${{ matrix.preset }}
+        run: cmake --build --preset "$BUILD_PRESET" --parallel 2
+
+      - name: Check startup on X11
+        env:
+          BUILD_PRESET: ${{ matrix.preset }}
+          QT_QPA_PLATFORM: xcb
+        run: xvfb-run -a dbus-run-session -- "./cmake-build-$BUILD_PRESET/XLibrary" --check-startup
+
+      - name: Install and check desktop entry
+        env:
+          BUILD_PRESET: ${{ matrix.preset }}
+        run: |
+          cmake --install "cmake-build-$BUILD_PRESET" --prefix "$RUNNER_TEMP/xlibrary"
+          desktop-file-validate "$RUNNER_TEMP/xlibrary/share/applications/io.github.LapplandJulia.XLibrary.desktop"
+          QT_QPA_PLATFORM=offscreen "$RUNNER_TEMP/xlibrary/bin/XLibrary" --check-startup
+
+  linux-packages:
+    name: linux-AppImage-and-DEB
+    runs-on: ubuntu-24.04
+    # Сборка на целевой базе не требует обновлять Qt и glibc в Debian 13.
+    container: debian:13
+    timeout-minutes: 30
+    steps:
+      - name: Install distribution Qt and packaging tools
+        run: |
+          sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources
+          apt-get update
+          apt-get install -y ca-certificates git build-essential cmake ninja-build python3 curl file dpkg-dev \
+            qt6-base-dev qt6-wayland libx11-dev desktop-file-utils xvfb xauth dbus-x11
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Allow packaging to read checkout metadata
+        # Checkout задаёт safe.directory во временном HOME; упаковщик работает в обычном HOME контейнера.
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Configure Release
+        run: cmake --preset linux-release -DCMAKE_PREFIX_PATH=/usr
+
+      - name: Build and verify packages
+        run: python3 packaging/build_release.py --output-path release/linux-packages
+
+      - name: Check AppImage on X11
+        run: |
+          APPIMAGE_EXTRACT_AND_RUN=1 QT_QPA_PLATFORM=xcb xvfb-run -a dbus-run-session -- \
+            ./release/linux-packages/XLibrary-*-linux-x86_64.AppImage --check-startup
+          cd release/linux-packages
+          sha256sum --check SHA256SUMS.txt
+
+      - name: Install, run and remove DEB
+        run: |
+          apt-get install -y ./release/linux-packages/xlibrary_*_amd64.deb
+          QT_QPA_PLATFORM=offscreen /usr/bin/XLibrary --check-startup
+          apt-get remove -y xlibrary
+
+      - name: Upload Linux packages
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: XLibrary-linux-x86_64
+          path: release/linux-packages/
+          if-no-files-found: error
+          retention-days: 14

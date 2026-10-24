@@ -13,8 +13,8 @@
 #include <QVBoxLayout>
 
 #include "appearance.h"
+#include "platform_integration.h"
 #include "ui_registry.h"
-#include "windows_integration.h"
 
 namespace ui_helpers {
 class TransitionOverlay : public QWidget {
@@ -76,7 +76,7 @@ public:
         animation->stop();
         overlay->hide();
         overlay->snapshot = QPixmap{};
-        if (!contents->isVisible() || !desktop_windows::animations_enabled())
+        if (!contents->isVisible() || !desktop_platform::animations_enabled())
             return;
         overlay->snapshot = contents->grab();
         overlay->setGeometry(rect());
