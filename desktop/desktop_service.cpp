@@ -437,28 +437,70 @@ void DesktopService::import_catalog(const QString &path) {
             throw std::runtime_error("Невозможно прочитать файл или его размер превышает 5 МБ.");
         QJsonParseError error;
         const auto document = QJsonDocument::fromJson(file.readAll(), &error);
+        if (error.error != QJsonParseError::NoError)
+            throw std::runtime_error(QString("Ошибка JSON в позиции %1: %2. Импорт отменён.")
+                                         .arg(error.offset)
+                                         .arg(error.errorString())
+                                         .toStdString());
         const auto root = document.object();
-        if (error.error != QJsonParseError::NoError || root.value("format").toInt() != 1 ||
-            !root.value("applications").isArray())
-            throw std::runtime_error("Неподдерживаемый формат библиотеки.");
+        if (!document.isObject())
+            throw std::runtime_error("Поле root: ожидается объект JSON. Импорт отменён.");
+        if (!root.value("format").isDouble() || root.value("format").toDouble() != 1)
+            throw std::runtime_error("Поле format: поддерживается только версия 1. Импорт отменён.");
+        if (!root.value("applications").isArray())
+            throw std::runtime_error("Поле applications: ожидается массив. Импорт отменён.");
         QVector<app_record> records;
         for (const auto &value : root.value("applications").toArray()) {
+            const auto fail = [&](const QString &field, const QString &reason) {
+                throw std::runtime_error(QString("Запись %1, поле %2: %3. Импорт отменён; изменения не сохранены.")
+                                             .arg(records.size() + 1)
+                                             .arg(field, reason)
+                                             .toStdString());
+            };
+            if (!value.isObject())
+                fail("applications[]", "ожидается объект");
             const auto object = value.toObject();
+            const auto text = [&](const QString &field, bool required = false) {
+                const auto item = object.value(field);
+                if ((!item.isUndefined() || required) && !item.isString())
+                    fail(field, "ожидается строка");
+                const auto result = item.toString();
+                if (result.contains(QChar::Null))
+                    fail(field, "нулевой символ недопустим");
+                return result;
+            };
             app_record record;
-            record.name = object.value("name").toString().trimmed();
-            record.path = QDir::fromNativeSeparators(object.value("path").toString());
-            record.arguments = object.value("arguments").toString();
-            record.working_directory = object.value("working_directory").toString();
+            record.name = text("name", true).trimmed();
+            record.path = QDir::fromNativeSeparators(text("path", true));
+            record.arguments = text("arguments");
+            record.working_directory = text("working_directory");
+            if (object.contains("favorite") && !object.value("favorite").isBool())
+                fail("favorite", "ожидается логическое значение");
             record.favorite = object.value("favorite").toBool();
-            for (const auto &tag : object.value("tags").toArray())
-                if (!tag.toString().trimmed().isEmpty())
-                    record.tags.append(tag.toString().trimmed());
-            if (record.name.isEmpty() || !QFileInfo(record.path).isAbsolute()
+            if (object.contains("tags") && !object.value("tags").isArray())
+                fail("tags", "ожидается массив строк");
+            qsizetype tag_index = 0;
+            for (const auto &tag : object.value("tags").toArray()) {
+                const auto field = QString("tags[%1]").arg(++tag_index);
+                if (!tag.isString())
+                    fail(field, "ожидается строка");
+                const auto name = tag.toString().trimmed();
+                if (!valid_tag_name(name))
+                    fail(field,
+                         "тег должен содержать от 1 до 64 символов, без пробелов, запятых, # и нулевого символа");
+                record.tags.append(name);
+            }
+            record.tags.removeDuplicates();
+            if (record.name.isEmpty() || record.name.size() > 256)
+                fail("name", "название должно содержать от 1 до 256 символов");
+            if (!QFileInfo(record.path).isAbsolute())
+                fail("path", "ожидается абсолютный путь");
 #ifdef Q_OS_WIN
-                || QFileInfo(record.path).suffix().isEmpty()
+            if (QFileInfo(record.path).suffix().isEmpty())
+                fail("path", "для цели Windows требуется расширение файла");
 #endif
-            )
-                throw std::runtime_error("В файле есть запись без имени или абсолютного пути.");
+            if (!record.working_directory.isEmpty() && !QFileInfo(record.working_directory).isAbsolute())
+                fail("working_directory", "ожидается пустая строка или абсолютный путь");
             records.append(std::move(record));
         }
         const int count = worker.store->import_records(records);
