@@ -64,10 +64,10 @@ python3 packaging/build_release.py --format deb --output-path release/deb
 **AppImage** включает Qt, платформенные плагины X11/Wayland, C++ runtime, лицензии и исходники Qt. Инструменты упаковки загружаются по фиксированным версиям из `packaging/appimage_tools.json` и проверяются по SHA256. Для системного Qt нужны включённые `deb-src` репозитории: упаковщик получает точную версию исходного пакета и исправления дистрибутива через `apt-get source --download-only`. Для официального Qt SDK используются проверенные исходные архивы из `packaging/qt_sources.json`; неизвестные версии и библиотеки останавливают упаковку.
 
 ```sh
-chmod +x XLibrary-0.1.1-linux-x86_64.AppImage
-./XLibrary-0.1.1-linux-x86_64.AppImage
+chmod +x XLibrary-0.2.0-linux-x86_64.AppImage
+./XLibrary-0.2.0-linux-x86_64.AppImage
 # Если FUSE недоступен, например в некоторых средах WSL:
-./XLibrary-0.1.1-linux-x86_64.AppImage --appimage-extract-and-run
+./XLibrary-0.2.0-linux-x86_64.AppImage --appimage-extract-and-run
 ```
 
 Версия в имени берётся из `VERSION`. Каталог и настройки сохраняются в `<имя файла>.AppImage.data` рядом с образом. Переносите AppImage вместе с этой папкой и сохраняйте имя файла. Каталог должен быть доступен для записи. Автозапуск указывает на исходный AppImage, а не на временный каталог монтирования. `--check-startup` использует временный профиль и не меняет portable-данные. Программы, запускаемые из библиотеки, получают исходное окружение без подмешивания Qt из AppImage.
@@ -75,7 +75,7 @@ chmod +x XLibrary-0.1.1-linux-x86_64.AppImage
 **DEB** предназначен для Debian/Ubuntu и совместимых систем. Он использует системный Qt; пакеты и минимальные версии библиотек определяются `dpkg-shlibdeps`. Упаковка DEB требует Qt, установленный пакетным менеджером: отдельный SDK для этого формата отклоняется. Платформенные плагины Qt, Wayland и `xdg-utils` объявлены зависимостями. Пакет устанавливает программу в `/usr/bin/XLibrary`, ярлык в меню и значок; пользовательские данные остаются в XDG-профиле.
 
 ```sh
-sudo apt install ./xlibrary_0.1.1_amd64.deb
+sudo apt install ./xlibrary_0.2.0_amd64.deb
 XLibrary
 sudo apt remove xlibrary
 ```
