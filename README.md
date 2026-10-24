@@ -48,6 +48,23 @@ An app can belong to more than one part of your day. Give your browser both `#wo
 | **Appearance** | Choose a light, dark, or system theme and adjust the text size. |
 | **Local storage** | Keep your catalog in SQLite. Import and export application entries, tags, and favorites as JSON. |
 
+## Import and discovery
+
+JSON format 1 stores application names, absolute paths, launch arguments, working directories,
+favorites, and assigned tags. Linux executable paths do not need a filename extension. Optional
+fields may be omitted; supplied fields must have the expected JSON types. Import validates the
+entire file before writing and reports the record number, field, and reason on invalid input.
+An import error leaves the catalog unchanged. Files are limited to 5 MiB.
+
+Discovery keeps a report in the library and in Settings → Library. Open **Last scan details** to
+read or copy it. The summary separates additions, duplicates, skipped entries, and errors.
+Duplicate names or normalized paths are skipped; existing entries keep their metadata.
+Cancelling discovery before its transaction is committed rolls back all additions. Once commit
+starts, cancellation is unavailable. JSON import and discovery never launch applications.
+
+JSON export is an application catalog transfer, not a complete profile backup: scenarios,
+unused tags, settings, and launch history are not included.
+
 ## Search
 
 Search by app name or executable filename, then narrow the results with your own tags.
