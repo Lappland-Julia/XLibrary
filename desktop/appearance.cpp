@@ -69,8 +69,14 @@ QIcon appearance::icon(const QString &name, const QColor &color) {
         for (int x : {5, 12, 19})
             painter.drawEllipse(QPointF(x, 12), 1, 1);
     } else if (name == "refresh") {
-        painter.drawArc(QRectF(4, 4, 16, 16), 35 * 16, 285 * 16);
-        painter.drawPolyline(QPolygonF{QPointF(16, 3), QPointF(20, 6), QPointF(20, 1)});
+        QPainterPath path;
+        path.arcMoveTo(QRectF(4, 4, 16, 16), 45);
+        const auto tip = path.currentPosition();
+        path.arcTo(QRectF(4, 4, 16, 16), 45, 270);
+        path.moveTo(tip - QPointF(5, 0));
+        path.lineTo(tip);
+        path.lineTo(tip - QPointF(0, 5));
+        painter.drawPath(path);
     } else if (name == "trash") {
         painter.drawLine(QPointF(4, 6), QPointF(20, 6));
         painter.drawPolyline(QPolygonF{QPointF(9, 6), QPointF(9, 3), QPointF(15, 3), QPointF(15, 6)});
@@ -221,6 +227,8 @@ void appearance::apply(QSettings &settings, const QString &additional_style) {
         QToolButton#notification_dismiss:hover { background: %7; border-color: %6; }
         QToolButton#notification_dismiss:pressed { background: %3; }
         QToolButton#notification_dismiss:focus { border-color: #AAB4C1; }
+        QProgressBar#notification_progress { background: %3; border: none; border-radius: 2px; }
+        QProgressBar#notification_progress::chunk { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #68717C, stop:1 #AAB4C1); border-radius: 2px; }
         QFrame#discovery_panel { background: %3; border: 1px solid %6; border-radius: 12px; }
         QLabel#discovery_percentage { color: %1; font-weight: 600; }
         QProgressBar#discovery_bar { background: %5; border: none; border-radius: 4px; }

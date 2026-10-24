@@ -342,9 +342,29 @@ QWidget *discovery_status(const ui_context &context, QWidget *parent) {
     container_layout->setContentsMargins(0, 0, 0, 0);
     auto *panel = new QFrame(container);
     container_layout->addWidget(panel);
-    auto *details = button(QCoreApplication::translate("XLibrary", "Last scan details…"), "quiet");
-    container_layout->addWidget(details);
-    const auto update_details = [=] { details->setVisible(!service->discovery_report().isEmpty()); };
+    auto *details_row = new QWidget;
+    auto *details_layout = new QHBoxLayout(details_row);
+    details_layout->setContentsMargins(0, 0, 0, 0);
+    details_layout->setSpacing(8);
+    auto *details = button(QCoreApplication::translate("XLibrary", "Last scan details…"));
+    details_layout->addWidget(details, 1);
+    auto *dismiss_details = button("");
+    dismiss_details->setAccessibleName(QCoreApplication::translate("XLibrary", "Dismiss scan details"));
+    dismiss_details->setToolTip(dismiss_details->accessibleName());
+    dismiss_details->setCursor(Qt::PointingHandCursor);
+    const auto update_details_style = [=] {
+        const QColor color(appearance::is_dark(*context.settings) ? "#A8A9AF" : "#555B64");
+        dismiss_details->setIcon(appearance::icon("x", color));
+        const auto icon_size = appearance::scaled(*context.settings, 16);
+        dismiss_details->setIconSize(QSize(icon_size, icon_size));
+        dismiss_details->setFixedWidth(appearance::scaled(*context.settings, 44));
+    };
+    QObject::connect(service, &DesktopService::appearance_changed, details_row, update_details_style);
+    update_details_style();
+    details_layout->addWidget(dismiss_details);
+    QObject::connect(dismiss_details, &QPushButton::clicked, details_row, &QWidget::hide);
+    container_layout->addWidget(details_row);
+    const auto update_details = [=] { details_row->setVisible(!service->discovery_report().isEmpty()); };
     QObject::connect(service, &DesktopService::discovery_report_changed, container, update_details);
     update_details();
     QObject::connect(details, &QPushButton::clicked, container, [=] {
@@ -460,7 +480,8 @@ QWidget *library(const ui_context &context, QWidget *parent) {
     scan->setFixedWidth(44);
     header->addWidget(scan);
     root->addLayout(header);
-    root->addWidget(context.registry->create("discovery_progress", context, widget));
+    auto *progress = context.registry->create("discovery_progress", context, widget);
+    root->addWidget(progress);
     auto *stack_widget = new QWidget;
     auto *stack = new QStackedLayout(stack_widget);
     auto *view = new ApplicationList;
@@ -515,8 +536,13 @@ QWidget *library(const ui_context &context, QWidget *parent) {
     auto *hint = label("", "muted");
     hint->setAlignment(Qt::AlignCenter);
     empty_layout->addWidget(hint);
-    auto *first = action_button(context.actions.value("add_application"));
-    empty_layout->addWidget(first, 0, Qt::AlignCenter);
+    auto *empty_actions = new QWidget;
+    auto *empty_actions_layout = new QVBoxLayout(empty_actions);
+    empty_actions_layout->setContentsMargins(0, 0, 0, 0);
+    empty_actions_layout->setSpacing(12);
+    empty_actions_layout->addWidget(action_button(context.actions.value("add_application")));
+    empty_actions_layout->addWidget(action_button(context.actions.value("discover")));
+    empty_layout->addWidget(empty_actions, 0, Qt::AlignHCenter);
     empty_layout->addStretch();
     stack->addWidget(empty);
     root->addWidget(stack_widget, 1);
@@ -530,18 +556,26 @@ QWidget *library(const ui_context &context, QWidget *parent) {
     root->addLayout(footer);
     auto update = [=] {
         const bool has_rows = service->filter.rowCount() > 0;
+        const bool no_apps = service->is_ready() && service->model.rowCount() == 0;
         stack->setCurrentWidget(has_rows ? static_cast<QWidget *>(view) : empty);
+        empty_actions->setVisible(no_apps);
+        if (no_apps && empty_layout->indexOf(progress) < 0) {
+            root->removeWidget(progress);
+            empty_layout->insertWidget(empty_layout->count() - 1, progress);
+            progress->show();
+        } else if (!no_apps && root->indexOf(progress) < 0) {
+            empty_layout->removeWidget(progress);
+            root->insertWidget(1, progress);
+            progress->show();
+        }
         if (!service->is_ready()) {
             empty_title->setText(QCoreApplication::translate("XLibrary", "Loading the library…"));
-            first->hide();
         } else {
-            const bool no_apps = service->model.rowCount() == 0;
             empty_title->setText(no_apps ? QCoreApplication::translate("XLibrary", "Add your first application")
                                          : QCoreApplication::translate("XLibrary", "No results"));
             hint->setText(no_apps
                               ? QCoreApplication::translate("XLibrary", "Select a file or find installed applications.")
                               : QCoreApplication::translate("XLibrary", "Change the query or select another section."));
-            first->setVisible(no_apps);
         }
         if (!has_rows) {
             service->select(0);

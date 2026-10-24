@@ -4,6 +4,14 @@
 <context>
     <name>XLibrary</name>
     <message>
+        <source>Dismiss scan details</source>
+        <translation>Скрыть кнопку подробностей сканирования</translation>
+    </message>
+    <message>
+        <source>Notification display time</source>
+        <translation>Время показа уведомления</translation>
+    </message>
+    <message>
         <location filename="../main.cpp" line="36"/>
         <source>Could not create a temporary profile for the startup check.</source>
         <translation>Не удалось создать временный профиль для проверки запуска.</translation>
