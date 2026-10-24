@@ -405,7 +405,7 @@ QWidget *discovery_status(const ui_context &context, QWidget *parent) {
                                              .arg(progress.processed)
                                              .arg(progress.total));
         cancel->setVisible(active);
-        cancel->setEnabled(!service->is_cancelling_discovery());
+        cancel->setEnabled(service->can_cancel_discovery());
         cancel->setText(service->is_cancelling_discovery() ? "Отмена…" : "Отмена");
         if (!active) {
             QTimer::singleShot(1200, panel, [=] {

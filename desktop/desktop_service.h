@@ -30,7 +30,7 @@ private:
     bool discovering = false;
     discovery_progress scan_progress;
     QString scan_report;
-    std::shared_ptr<std::atomic_bool> discovery_cancelled = std::make_shared<std::atomic_bool>(false);
+    std::shared_ptr<discovery_control> discovery_cancelled = std::make_shared<discovery_control>();
     bool ready = false;
     qint64 selected_id = 0;
     QString current_section = "library";
@@ -48,7 +48,12 @@ public:
     ~DesktopService() override;
     bool is_ready() const { return ready; }
     bool is_discovering() const { return discovering; }
-    bool is_cancelling_discovery() const { return discovering && discovery_cancelled->load(); }
+    bool is_cancelling_discovery() const {
+        return discovering && discovery_cancelled->phase.load() == discovery_phase::cancelling;
+    }
+    bool can_cancel_discovery() const {
+        return discovering && discovery_cancelled->phase.load() == discovery_phase::running;
+    }
     const discovery_progress &discovery_status() const { return scan_progress; }
     QString discovery_report() const { return scan_report; }
     bool is_scenario_active() const { return scenario_active; }

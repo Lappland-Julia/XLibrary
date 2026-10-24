@@ -190,7 +190,9 @@ DesktopService::DesktopService(QObject *parent, const QString &profile_path, con
 
 DesktopService::~DesktopService() {
     ++*scenario_generation;
-    discovery_cancelled->store(true);
+    auto expected = discovery_phase::running;
+    discovery_cancelled->phase.compare_exchange_strong(expected, discovery_phase::cancelling);
+    discovery_cancelled->requested.store(true);
     scenario_timer.stop();
     discovery_pool.clear();
     discovery_pool.waitForDone();
@@ -208,6 +210,8 @@ void DesktopService::enqueue(const QString &operation, std::function<void(Catalo
                         "Библиотека недоступна. Перезапустите приложение после устранения ошибки.");
                 task(*worker);
                 emit worker->completed(operation, true);
+            } catch (const DiscoveryCancelled &) {
+                emit worker->completed(operation, false);
             } catch (const std::exception &error) {
                 emit worker->failed(QString::fromUtf8(error.what()));
                 emit worker->completed(operation, false);
@@ -379,7 +383,7 @@ void DesktopService::discover() {
         return;
     }
     discovering = true;
-    discovery_cancelled = std::make_shared<std::atomic_bool>(false);
+    discovery_cancelled = std::make_shared<discovery_control>();
     scan_progress = {-1, 0, 0, "Подготовка списка приложений…"};
     emit discovery_changed();
     // Обновления из обоих рабочих потоков приходят в UI не чаще смены процента или этапа.
@@ -393,7 +397,7 @@ void DesktopService::discover() {
             QMetaObject::invokeMethod(
                 this,
                 [this, cancelled, progress] {
-                    if (!discovering || cancelled != discovery_cancelled || cancelled->load() ||
+                    if (!discovering || cancelled != discovery_cancelled || cancelled->requested.load() ||
                         progress.percent < scan_progress.percent)
                         return;
                     scan_progress = progress;
@@ -404,33 +408,55 @@ void DesktopService::discover() {
     auto *watcher = new QFutureWatcher<std::pair<QVector<app_record>, QVector<discovery_issue>>>(this);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, report_progress] {
         try {
-            if (discovery_cancelled->load()) {
+            auto result = watcher->result();
+            if (discovery_cancelled->requested.load()) {
                 discovering = false;
+                const auto message =
+                    discovery_summary(0, result.second, "Сканирование отменено; изменения не сохранены.");
+                scan_report = discovery_details(message, result.second);
+                emit discovery_report_changed();
                 emit discovery_changed();
-                notify("Поиск приложений отменён.");
+                notify(message);
                 watcher->deleteLater();
                 return;
             }
-            auto result = watcher->result();
             scan_progress = {90, 0, result.first.size(), "Добавление приложений в библиотеку"};
             emit discovery_progress_changed();
             enqueue("discover", [applications = std::move(result.first), issues = std::move(result.second),
                                  cancelled = discovery_cancelled, report_progress](CatalogWorker &worker) mutable {
-                const auto count = worker.store->import_records(
-                    applications, cancelled.get(),
-                    [&](qsizetype processed, qsizetype total) {
-                        report_progress({total > 0 ? 90 + static_cast<int>(9.0 * processed / total) : 99, processed,
-                                         total, "Добавление приложений в библиотеку"});
-                    },
-                    &issues);
+                catalog_import_result count;
+                try {
+                    count = worker.store->import_records(
+                        applications, cancelled.get(),
+                        [&](qsizetype processed, qsizetype total) {
+                            report_progress({total > 0 ? 90 + static_cast<int>(9.0 * processed / total) : 99, processed,
+                                             total, "Добавление приложений в библиотеку"});
+                        },
+                        &issues);
+                } catch (const DiscoveryCancelled &) {
+                    const auto message = discovery_summary(0, issues, "Сканирование отменено; изменения не сохранены.");
+                    emit worker.discovery_report_ready(discovery_details(message, issues));
+                    emit worker.notification(message);
+                    throw;
+                } catch (const std::exception &error) {
+                    issues.append(discovery_issue{"SQLite", QString::fromUtf8(error.what())});
+                    const auto message = discovery_summary(0, issues, "Сканирование прервано; изменения не сохранены.");
+                    emit worker.discovery_report_ready(discovery_details(message, issues));
+                    emit worker.notification(message);
+                    throw;
+                }
                 report_progress({99, applications.size(), applications.size(), "Обновление библиотеки"});
-                worker.refresh();
                 const auto message = discovery_summary(count.added, issues, "Сканирование завершено.");
                 emit worker.discovery_report_ready(discovery_details(message, issues));
                 emit worker.notification(message);
+                worker.refresh();
             });
         } catch (const std::exception &error) {
-            notify(QString::fromUtf8(error.what()));
+            const QVector<discovery_issue> issues{{"Discovery", QString::fromUtf8(error.what())}};
+            const auto message = discovery_summary(0, issues, "Сканирование прервано; изменения не сохранены.");
+            scan_report = discovery_details(message, issues);
+            emit discovery_report_changed();
+            notify(message);
             discovering = false;
             emit discovery_changed();
         }
@@ -439,15 +465,19 @@ void DesktopService::discover() {
     watcher->setFuture(
         QtConcurrent::run(&discovery_pool, [registry, start_menu, cancelled = discovery_cancelled, report_progress] {
             QVector<discovery_issue> issues;
-            auto applications = desktop_platform::discover(registry, start_menu, issues, *cancelled, report_progress);
+            auto applications =
+                desktop_platform::discover(registry, start_menu, issues, cancelled->requested, report_progress);
             return std::make_pair(std::move(applications), std::move(issues));
         }));
 }
 
 void DesktopService::cancel_discovery() {
-    if (!discovering || discovery_cancelled->load())
+    if (!discovering)
         return;
-    discovery_cancelled->store(true);
+    auto expected = discovery_phase::running;
+    if (!discovery_cancelled->phase.compare_exchange_strong(expected, discovery_phase::cancelling))
+        return;
+    discovery_cancelled->requested.store(true);
     scan_progress.stage = "Остановка сканирования…";
     emit discovery_progress_changed();
     notify("Остановка поиска приложений…");

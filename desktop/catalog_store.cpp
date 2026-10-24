@@ -360,8 +360,7 @@ void CatalogStore::clear_history() {
     execute("UPDATE desktop_application SET last_launch = 0;");
 }
 
-catalog_import_result CatalogStore::import_records(const QVector<app_record> &records,
-                                                   const std::atomic_bool *cancelled,
+catalog_import_result CatalogStore::import_records(const QVector<app_record> &records, discovery_control *control,
                                                    const std::function<void(qsizetype, qsizetype)> &progress,
                                                    QVector<discovery_issue> *issues) {
     Transaction transaction(database.get_connection());
@@ -374,8 +373,8 @@ catalog_import_result CatalogStore::import_records(const QVector<app_record> &re
     }
     catalog_import_result result;
     for (qsizetype index = 0; index < records.size(); ++index) {
-        if (cancelled && cancelled->load())
-            throw std::runtime_error("Поиск приложений отменён.");
+        if (control && control->phase.load() == discovery_phase::cancelling)
+            throw DiscoveryCancelled();
         if (progress)
             progress(index, records.size());
         const auto &record = records[index];
@@ -404,8 +403,12 @@ catalog_import_result CatalogStore::import_records(const QVector<app_record> &re
             ++result.added;
         }
     }
-    if (cancelled && cancelled->load())
-        throw std::runtime_error("Поиск приложений отменён.");
+    if (control) {
+        // Единственная граница отмены: запрос до неё откатывает всю транзакцию.
+        auto expected = discovery_phase::running;
+        if (!control->phase.compare_exchange_strong(expected, discovery_phase::committing))
+            throw DiscoveryCancelled();
+    }
     transaction.commit();
     if (progress)
         progress(records.size(), records.size());

@@ -1,10 +1,12 @@
 #ifndef XLIBRARY_CATALOG_TYPES_H
 #define XLIBRARY_CATALOG_TYPES_H
 
+#include <atomic>
 #include <QMetaType>
 #include <QRegularExpression>
 #include <QStringList>
 #include <QVector>
+#include <stdexcept>
 
 inline bool valid_tag_name(const QString &tag) {
     return !tag.isEmpty() && tag.size() <= 64 && !tag.contains(QChar::Null) &&
@@ -42,6 +44,18 @@ struct discovery_issue {
 struct catalog_import_result {
     qsizetype added = 0;
     qsizetype duplicates = 0;
+};
+
+enum class discovery_phase { running, cancelling, committing };
+
+struct discovery_control {
+    std::atomic_bool requested = false;
+    std::atomic<discovery_phase> phase = discovery_phase::running;
+};
+
+class DiscoveryCancelled : public std::runtime_error {
+public:
+    DiscoveryCancelled() : std::runtime_error("Discovery cancelled") {}
 };
 
 struct scenario_step {

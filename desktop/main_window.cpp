@@ -132,6 +132,7 @@ MainWindow::MainWindow(DesktopService &service) : service(service), hotkey(this)
     connect(&service, &DesktopService::selection_changed, this, &MainWindow::refresh_actions);
     connect(&service, &DesktopService::catalog_changed, this, &MainWindow::refresh_actions);
     connect(&service, &DesktopService::discovery_changed, this, &MainWindow::refresh_actions);
+    connect(&service, &DesktopService::discovery_progress_changed, this, &MainWindow::refresh_actions);
     connect(&service, &DesktopService::navigation_changed, this, &MainWindow::update_layout);
     connect(&service, &DesktopService::appearance_changed, this, &MainWindow::apply_settings);
     connect(qApp->styleHints(), &QStyleHints::colorSchemeChanged, this, [this] {
@@ -245,7 +246,8 @@ void MainWindow::refresh_actions() {
     context.actions.value("add_application")->setEnabled(service.is_ready());
     context.actions.value("add_tag")->setEnabled(service.is_ready());
     context.actions.value("add_scenario")->setEnabled(service.is_ready() && service.model.rowCount() > 0);
-    context.actions.value("discover")->setEnabled(service.is_ready());
+    context.actions.value("discover")
+        ->setEnabled(service.is_ready() && (!service.is_discovering() || service.can_cancel_discovery()));
     context.actions.value("discover")
         ->setText(service.is_discovering() ? "Отменить поиск" : "Найти установленные приложения");
     context.actions.value("launch")->setText(
