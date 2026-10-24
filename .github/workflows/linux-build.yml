@@ -86,6 +86,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Allow packaging to read checkout metadata
+        # Checkout задаёт safe.directory во временном HOME; упаковщик работает в обычном HOME контейнера.
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Configure Release
         run: cmake --preset linux-release -DCMAKE_PREFIX_PATH=/usr
 
