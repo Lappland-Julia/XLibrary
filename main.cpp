@@ -13,10 +13,13 @@
 #include "desktop/appearance.h"
 #include "desktop/application_paths.h"
 #include "desktop/desktop_service.h"
+#include "desktop/localization.h"
 #include "desktop/main_window.h"
 
 int main(int argc, char *argv[]) {
     QApplication application(argc, argv);
+    Localization localization;
+    localization.apply();
     application.setOrganizationName("XLibrary");
     application.setApplicationName("XLibrary");
     application.setApplicationVersion(XLIBRARY_VERSION);
@@ -30,7 +33,9 @@ int main(int argc, char *argv[]) {
         if (check_startup) {
             startup_profile = std::make_unique<QTemporaryDir>();
             if (!startup_profile->isValid())
-                throw std::runtime_error("Не удалось создать временный профиль для проверки запуска.");
+                throw std::runtime_error(QCoreApplication::translate(
+                                             "XLibrary", "Could not create a temporary profile for the startup check.")
+                                             .toStdString());
         }
         const auto appimage = check_startup ? QString{} : application_paths::appimage_file();
         const auto profile = check_startup         ? startup_profile->path()
@@ -38,7 +43,11 @@ int main(int argc, char *argv[]) {
                              : portable            ? application.applicationDirPath() + "/data"
                                         : QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
         if (!QDir().mkpath(profile))
-            throw std::runtime_error("Не удалось создать папку настроек XLibrary.");
+            throw std::runtime_error(
+                QCoreApplication::translate("XLibrary", "Could not create the XLibrary settings folder.")
+                    .toStdString());
+        QSettings language_settings(profile + "/settings.ini", QSettings::IniFormat);
+        localization.apply(language_settings.value("interface/language", "system").toString());
         const auto server_name =
             "xlibrary-" + QString::fromLatin1(
                               QCryptographicHash::hash(profile.toUtf8(), QCryptographicHash::Sha256).toHex().left(24));
@@ -47,7 +56,9 @@ int main(int argc, char *argv[]) {
         if (!instance_lock.tryLock(0)) {
             if (instance_lock.error() != QLockFile::LockFailedError)
                 throw std::runtime_error(
-                    "Не удалось записать файл блокировки профиля XLibrary. Проверьте права доступа.");
+                    QCoreApplication::translate(
+                        "XLibrary", "Could not write the XLibrary profile lock file. Check access permissions.")
+                        .toStdString());
             QLocalSocket socket;
             socket.connectToServer(server_name);
             if (socket.waitForConnected(1500)) {
@@ -56,19 +67,24 @@ int main(int argc, char *argv[]) {
                 socket.waitForBytesWritten(100);
                 return 0;
             }
-            QMessageBox::information(nullptr, "XLibrary", "Другой экземпляр XLibrary уже запускается или не отвечает.");
+            QMessageBox::information(
+                nullptr, "XLibrary",
+                QCoreApplication::translate("XLibrary", "Another instance of XLibrary is starting or not responding."));
             return 1;
         }
         QLocalServer::removeServer(server_name);
         QLocalServer server;
         server.setSocketOptions(QLocalServer::UserAccessOption);
         if (!server.listen(server_name))
-            throw std::runtime_error("Не удалось открыть локальный канал XLibrary.");
+            throw std::runtime_error(
+                QCoreApplication::translate("XLibrary", "Could not open the XLibrary local channel.").toStdString());
         // Portable и проверка запуска используют свой каталог без подмены окружения дочерних приложений.
         const auto database_path = (portable || check_startup) ? profile + "/xlibrary.db" : QString{};
         DesktopService service(nullptr, profile, database_path);
         if (!service.settings.isWritable())
-            throw std::runtime_error("Нет прав на запись настроек XLibrary. Выберите доступную для записи папку.");
+            throw std::runtime_error(
+                QCoreApplication::translate("XLibrary", "Cannot write XLibrary settings. Choose a writable folder.")
+                    .toStdString());
         MainWindow window(service);
         if (check_startup) {
             QObject::connect(&service, &DesktopService::catalog_changed, &application, [&] {
@@ -98,7 +114,8 @@ int main(int argc, char *argv[]) {
         if (check_startup)
             qCritical("%s", error.what());
         else
-            QMessageBox::critical(nullptr, "Ошибка XLibrary", QString::fromUtf8(error.what()));
+            QMessageBox::critical(nullptr, QCoreApplication::translate("XLibrary", "XLibrary error"),
+                                  QString::fromUtf8(error.what()));
         return 1;
     }
 }

@@ -12,6 +12,7 @@
 
 #include "desktop_service.h"
 #include "editors.h"
+#include "localization.h"
 #include "ui_helpers.h"
 
 namespace {
@@ -33,7 +34,8 @@ QDialog *application_editor(const ui_context &context, QWidget *parent) {
     auto *service = static_cast<DesktopService *>(context.service);
     const auto record = context.parameters.value("record").value<app_record>();
     auto *dialog = new QDialog(parent);
-    dialog->setWindowTitle(record.id ? "Изменить приложение" : "Добавить приложение");
+    dialog->setWindowTitle(record.id ? QCoreApplication::translate("XLibrary", "Edit application")
+                                     : QCoreApplication::translate("XLibrary", "Add application"));
     prepare_dialog(dialog, context, {640, 700}, {420, 320});
     auto *root = new QVBoxLayout(dialog);
     root->setContentsMargins(24, 24, 24, 24);
@@ -44,27 +46,27 @@ QDialog *application_editor(const ui_context &context, QWidget *parent) {
     layout->setSpacing(6);
     auto *path = new QLineEdit(record.path);
     path->setObjectName("application_path");
-    auto *browse = button("Обзор…");
+    auto *browse = button(QCoreApplication::translate("XLibrary", "Browse…"));
     auto *file_row = new QWidget;
     auto *file_layout = new QHBoxLayout(file_row);
     file_layout->setContentsMargins(0, 0, 0, 0);
     file_layout->addWidget(path, 1);
     file_layout->addWidget(browse);
-    field(layout, "Файл приложения или ярлык", file_row);
+    field(layout, QCoreApplication::translate("XLibrary", "Application file or shortcut"), file_row);
     auto *name = new QLineEdit(record.name);
     name->setObjectName("application_name");
     name->setMaxLength(256);
-    field(layout, "Название", name);
+    field(layout, QCoreApplication::translate("XLibrary", "Name"), name);
     auto *arguments = new QLineEdit(record.arguments);
     arguments->setObjectName("application_arguments");
-    field(layout, "Аргументы запуска", arguments);
+    field(layout, QCoreApplication::translate("XLibrary", "Launch arguments"), arguments);
     auto *directory = new QLineEdit(record.working_directory);
-    directory->setPlaceholderText("По умолчанию — папка приложения");
-    field(layout, "Рабочая папка", directory);
+    directory->setPlaceholderText(QCoreApplication::translate("XLibrary", "Default: application folder"));
+    field(layout, QCoreApplication::translate("XLibrary", "Working directory"), directory);
     auto *tags = new QLineEdit(record.tags.join(", "));
-    tags->setPlaceholderText("разработка, работа");
-    field(layout, "Теги через запятую", tags);
-    auto *favorite = new QCheckBox("В избранном");
+    tags->setPlaceholderText(QCoreApplication::translate("XLibrary", "development, work"));
+    field(layout, QCoreApplication::translate("XLibrary", "Tags separated by commas"), tags);
+    auto *favorite = new QCheckBox(QCoreApplication::translate("XLibrary", "Favorite"));
     favorite->setChecked(record.favorite);
     layout->addWidget(favorite);
     auto *error = label("", "error");
@@ -72,18 +74,20 @@ QDialog *application_editor(const ui_context &context, QWidget *parent) {
     root->addWidget(scroll(form), 1);
     root->addWidget(error);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Cancel | QDialogButtonBox::Save);
-    buttons->button(QDialogButtonBox::Cancel)->setText("Отмена");
+    buttons->button(QDialogButtonBox::Cancel)->setText(QCoreApplication::translate("XLibrary", "Cancel"));
     auto *save = buttons->button(QDialogButtonBox::Save);
-    save->setText(record.id ? "Сохранить" : "Добавить");
+    save->setText(record.id ? QCoreApplication::translate("XLibrary", "Save")
+                            : QCoreApplication::translate("XLibrary", "Add"));
     save->setProperty("primary", true);
     root->addWidget(buttons);
     QObject::connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
     QObject::connect(browse, &QPushButton::clicked, dialog, [=] {
-        const auto file = QFileDialog::getOpenFileName(dialog, "Выберите приложение", {},
+        const auto file = QFileDialog::getOpenFileName(
+            dialog, QCoreApplication::translate("XLibrary", "Select an application"), {},
 #ifdef Q_OS_WIN
-                                                       "Приложения (*.exe *.lnk *.bat *.cmd);;Все файлы (*)"
+            QCoreApplication::translate("XLibrary", "Applications (*.exe *.lnk *.bat *.cmd);;All files (*)")
 #else
-                                                       "Все файлы (*);;Ярлыки приложений (*.desktop);;AppImage (*.AppImage)"
+                                                       QCoreApplication::translate("XLibrary", "All files (*);;Application shortcuts (*.desktop);;AppImage (*.AppImage)")
 #endif
         );
         if (!file.isEmpty()) {
@@ -114,22 +118,25 @@ QDialog *application_editor(const ui_context &context, QWidget *parent) {
         updated.tags = parse_tags(tags->text());
         updated.favorite = favorite->isChecked();
         if (updated.name.isEmpty() || !QFileInfo(updated.path).isAbsolute()) {
-            error->setText("Укажите название и абсолютный путь к файлу приложения.");
+            error->setText(
+                QCoreApplication::translate("XLibrary", "Enter a name and an absolute path to the application file."));
             return;
         }
         if (!updated.working_directory.isEmpty() && !QFileInfo(updated.working_directory).isAbsolute()) {
-            error->setText("Рабочая папка должна быть абсолютным путём.");
+            error->setText(QCoreApplication::translate("XLibrary", "The working directory must be an absolute path."));
             return;
         }
         for (const auto &tag : updated.tags)
             if (!valid_tag_name(tag)) {
-                error->setText("Тег: до 64 символов, без пробелов, запятых и #.");
+                error->setText(
+                    QCoreApplication::translate("XLibrary", "Tag: up to 64 characters, without spaces, commas, or #."));
                 return;
             }
 #ifdef Q_OS_WIN
         if (QFileInfo(updated.path).suffix().compare("lnk", Qt::CaseInsensitive) == 0) {
             service->resolve_application(updated.path);
-            error->setText("Ярлык прочитан. Проверьте параметры и сохраните ещё раз.");
+            error->setText(
+                QCoreApplication::translate("XLibrary", "Shortcut loaded. Check its parameters and save again."));
             return;
         }
 #endif
@@ -150,7 +157,7 @@ QDialog *application_editor(const ui_context &context, QWidget *parent) {
             else {
                 save->setEnabled(true);
                 if (error->text().isEmpty())
-                    error->setText("Не удалось сохранить приложение.");
+                    error->setText(QCoreApplication::translate("XLibrary", "Could not save the application."));
             }
         }
     });
@@ -161,30 +168,33 @@ QDialog *tag_editor(const ui_context &context, QWidget *parent) {
     auto *service = static_cast<DesktopService *>(context.service);
     const auto old_name = context.parameters.value("tag").toString();
     auto *dialog = new QDialog(parent);
-    dialog->setWindowTitle(old_name.isEmpty() ? "Добавить тег" : "Изменить тег");
+    dialog->setWindowTitle(old_name.isEmpty() ? QCoreApplication::translate("XLibrary", "Add tag")
+                                              : QCoreApplication::translate("XLibrary", "Edit tag"));
     prepare_dialog(dialog, context, {440, 260}, {320, 220});
     auto *layout = new QVBoxLayout(dialog);
     layout->setContentsMargins(24, 24, 24, 24);
     layout->addWidget(label(dialog->windowTitle(), "subheading"));
     auto *name = new QLineEdit(old_name);
     name->setMaxLength(64);
-    name->setAccessibleName("Название тега");
-    name->setPlaceholderText("Название тега");
+    name->setAccessibleName(QCoreApplication::translate("XLibrary", "Tag name"));
+    name->setPlaceholderText(QCoreApplication::translate("XLibrary", "Tag name"));
     layout->addWidget(name);
-    layout->addWidget(label("До 64 символов, без пробелов, запятых и #.", "muted"));
+    layout->addWidget(
+        label(QCoreApplication::translate("XLibrary", "Up to 64 characters, without spaces, commas, or #."), "muted"));
     auto *error = label("", "error");
     layout->addWidget(error);
     layout->addStretch();
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel);
-    buttons->button(QDialogButtonBox::Save)->setText("Сохранить");
+    buttons->button(QDialogButtonBox::Save)->setText(QCoreApplication::translate("XLibrary", "Save"));
     buttons->button(QDialogButtonBox::Save)->setProperty("primary", true);
-    buttons->button(QDialogButtonBox::Cancel)->setText("Отмена");
+    buttons->button(QDialogButtonBox::Cancel)->setText(QCoreApplication::translate("XLibrary", "Cancel"));
     layout->addWidget(buttons);
     QObject::connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
     QObject::connect(buttons, &QDialogButtonBox::accepted, dialog, [=] {
         const auto tag = name->text().trimmed();
         if (!valid_tag_name(tag)) {
-            error->setText("До 64 символов, без пробелов, запятых и #.");
+            error->setText(
+                QCoreApplication::translate("XLibrary", "Up to 64 characters, without spaces, commas, or #."));
             name->setFocus();
             return;
         }
@@ -203,7 +213,7 @@ QDialog *tag_editor(const ui_context &context, QWidget *parent) {
             else {
                 buttons->button(QDialogButtonBox::Save)->setEnabled(true);
                 if (error->text().isEmpty())
-                    error->setText("Не удалось сохранить тег.");
+                    error->setText(QCoreApplication::translate("XLibrary", "Could not save the tag."));
             }
         }
     });
@@ -214,7 +224,8 @@ QDialog *scenario_editor(const ui_context &context, QWidget *parent) {
     auto *service = static_cast<DesktopService *>(context.service);
     const auto record = context.parameters.value("scenario").value<scenario_record>();
     auto *dialog = new QDialog(parent);
-    dialog->setWindowTitle(record.id ? "Изменить сценарий" : "Создать сценарий");
+    dialog->setWindowTitle(record.id ? QCoreApplication::translate("XLibrary", "Edit scenario")
+                                     : QCoreApplication::translate("XLibrary", "Create scenario"));
     prepare_dialog(dialog, context, {820, 680}, {480, 420});
     auto *root = new QVBoxLayout(dialog);
     root->setContentsMargins(24, 24, 24, 24);
@@ -223,21 +234,24 @@ QDialog *scenario_editor(const ui_context &context, QWidget *parent) {
     auto *form_layout = new QVBoxLayout(form);
     form_layout->setContentsMargins(0, 8, 0, 8);
     auto *name = new QLineEdit(record.name);
-    name->setAccessibleName("Название сценария");
+    name->setAccessibleName(QCoreApplication::translate("XLibrary", "Scenario name"));
     name->setMaxLength(128);
-    form_layout->addWidget(label("Название сценария", "muted"));
+    form_layout->addWidget(label(QCoreApplication::translate("XLibrary", "Scenario name"), "muted"));
     form_layout->addWidget(name);
     form_layout->addSpacing(16);
-    form_layout->addWidget(label("Приложения · задержка перед запуском", "muted"));
+    form_layout->addWidget(
+        label(QCoreApplication::translate("XLibrary", "Applications · delay before launch"), "muted"));
     auto *table = new QTableWidget(0, 3);
-    table->setHorizontalHeaderLabels({"Включено", "Приложение", "Задержка, с"});
+    table->setHorizontalHeaderLabels({QCoreApplication::translate("XLibrary", "Enabled"),
+                                      QCoreApplication::translate("XLibrary", "Application"),
+                                      QCoreApplication::translate("XLibrary", "Delay, s")});
     table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     table->horizontalHeader()->resizeSection(0, appearance::scaled(*context.settings, 95));
     table->horizontalHeader()->resizeSection(2, appearance::scaled(*context.settings, 140));
     table->verticalHeader()->hide();
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
     table->setSelectionMode(QAbstractItemView::SingleSelection);
-    table->setAccessibleName("Шаги сценария");
+    table->setAccessibleName(QCoreApplication::translate("XLibrary", "Scenario steps"));
     table->setMinimumHeight(appearance::scaled(*context.settings, 120));
     auto add_step = [=](const scenario_step &step) {
         const auto row = table->rowCount();
@@ -250,13 +264,15 @@ QDialog *scenario_editor(const ui_context &context, QWidget *parent) {
         apps->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
         for (const auto &application : service->model.applications())
             apps->addItem(application.name, application.id);
-        apps->setAccessibleName("Приложение шага " + QString::number(row + 1));
+        apps->setAccessibleName(QCoreApplication::translate("XLibrary", "Application for step ") +
+                                QString::number(row + 1));
         apps->setCurrentIndex(qMax(0, apps->findData(step.application_id)));
         table->setCellWidget(row, 1, apps);
         auto *delay = new QSpinBox;
         delay->setRange(0, 3600);
         delay->setValue(step.delay_ms / 1000);
-        delay->setAccessibleName("Задержка перед шагом " + QString::number(row + 1) + ", секунд");
+        delay->setAccessibleName(QCoreApplication::translate("XLibrary", "Delay before step ") +
+                                 QString::number(row + 1) + QCoreApplication::translate("XLibrary", ", seconds"));
         table->setCellWidget(row, 2, delay);
         table->setRowHeight(row, qMax(apps->sizeHint().height(), delay->sizeHint().height()) + 8);
     };
@@ -264,10 +280,10 @@ QDialog *scenario_editor(const ui_context &context, QWidget *parent) {
         add_step(step);
     form_layout->addWidget(table, 1);
     auto *tools = new QGridLayout;
-    auto *add = button("+ Добавить приложение");
-    auto *remove = button("Удалить шаг");
-    auto *up = button("Выше");
-    auto *down = button("Ниже");
+    auto *add = button(QCoreApplication::translate("XLibrary", "+ Add application"));
+    auto *remove = button(QCoreApplication::translate("XLibrary", "Remove step"));
+    auto *up = button(QCoreApplication::translate("XLibrary", "Move up"));
+    auto *down = button(QCoreApplication::translate("XLibrary", "Move down"));
     tools->addWidget(add, 0, 0);
     tools->addWidget(remove, 0, 1);
     tools->addWidget(up, 1, 0);
@@ -310,10 +326,10 @@ QDialog *scenario_editor(const ui_context &context, QWidget *parent) {
     auto *error = label("", "error");
     root->addWidget(error);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel);
-    buttons->button(QDialogButtonBox::Save)->setText("Сохранить");
+    buttons->button(QDialogButtonBox::Save)->setText(QCoreApplication::translate("XLibrary", "Save"));
     buttons->button(QDialogButtonBox::Save)->setProperty("primary", true);
-    buttons->button(QDialogButtonBox::Cancel)->setText("Отмена");
-    auto *save_and_run = button("Сохранить и запустить сценарий");
+    buttons->button(QDialogButtonBox::Cancel)->setText(QCoreApplication::translate("XLibrary", "Cancel"));
+    auto *save_and_run = button(QCoreApplication::translate("XLibrary", "Save and run scenario"));
     save_and_run->setAutoDefault(false);
     root->addWidget(save_and_run);
     root->addWidget(buttons);
@@ -321,7 +337,7 @@ QDialog *scenario_editor(const ui_context &context, QWidget *parent) {
     auto save_scenario = [=](bool run) {
         scenario_record updated{record.id, name->text().trimmed(), read_steps()};
         if (updated.name.isEmpty() || updated.steps.isEmpty()) {
-            error->setText("Укажите название и добавьте приложение.");
+            error->setText(QCoreApplication::translate("XLibrary", "Enter a name and add an application."));
             return;
         }
         dialog->setProperty("run_after_save", run);
@@ -348,7 +364,7 @@ QDialog *scenario_editor(const ui_context &context, QWidget *parent) {
                 buttons->button(QDialogButtonBox::Save)->setEnabled(true);
                 save_and_run->setEnabled(true);
                 if (error->text().isEmpty())
-                    error->setText("Не удалось сохранить сценарий.");
+                    error->setText(QCoreApplication::translate("XLibrary", "Could not save the scenario."));
             }
         }
     });

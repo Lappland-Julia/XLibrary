@@ -24,8 +24,9 @@ public:
     void remove_scenario(qint64 id);
     void record_launch(qint64 id);
     void clear_history();
-    int import_records(const QVector<app_record> &records, const std::atomic_bool *cancelled = nullptr,
-                       const std::function<void(qsizetype, qsizetype)> &progress = {});
+    catalog_import_result import_records(const QVector<app_record> &records, discovery_control *control = nullptr,
+                                         const std::function<void(qsizetype, qsizetype)> &progress = {},
+                                         QVector<discovery_issue> *issues = nullptr);
     QString path() const;
 };
 

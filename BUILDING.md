@@ -1,5 +1,9 @@
 # Сборка XLibrary для Windows и Linux
 
+Текущая версия в `VERSION` — **0.2.0**. Числа в примерах имён пакетов нужно
+заменять при изменении `VERSION`; Windows-упаковщик пока добавляет `pre-release`.
+Реализованный GUI использует **Qt Widgets**; QML и Qt Quick для сборки не нужны.
+
 ## Linux и CLion
 
 Нужны Linux с `/proc`, компилятор C++23 (GCC 13+ или Clang 17+ с соответствующей libstdc++), CMake 3.21+, Ninja и Qt **6.5+** с Widgets, Concurrent, Network и DBus. Для глобального сочетания и переключения окон в X11 установите заголовки Xlib. Без Xlib сборка поддерживается, но эти две функции недоступны. Qt для Windows нельзя использовать при сборке Linux.
@@ -8,7 +12,7 @@
 
 ```sh
 sudo apt-get update
-sudo apt-get install build-essential clang cmake ninja-build qt6-base-dev qt6-wayland libx11-dev
+sudo apt-get install build-essential clang cmake ninja-build qt6-base-dev qt6-wayland qt6-tools-dev qt6-l10n-tools libx11-dev
 cmake --preset linux-debug
 cmake --build --preset linux-debug --parallel 4
 ./cmake-build-linux-debug/XLibrary
@@ -84,7 +88,7 @@ sudo apt remove xlibrary
 
 ## Windows
 
-Нужны Windows 10/11 x64, Git, CMake 3.21+, компилятор C++23 и **динамический** Qt 6.5+ с Widgets, Concurrent и Network. Для Ninja нужен `ninja.exe` в PATH. При первой конфигурации CMake скачивает SQLite с проверкой хеша.
+Нужны Windows 10/11 x64, Git, CMake 3.21+, компилятор C++23 и **динамический** Qt 6.5+ с Widgets, Concurrent и Network. Для сборки встроенного перевода нужны Qt LinguistTools (`lrelease`); при установке Qt SDK включите инструменты переводов. Для Ninja нужен `ninja.exe` в PATH. При первой конфигурации CMake скачивает SQLite с проверкой хеша.
 
 Версия приложения задаётся только в корневом файле `VERSION` в формате `major.minor.patch`. CMake использует её для приложения, окна «О программе», ресурсов Windows и упаковщика. После изменения `VERSION` следующая сборка автоматически повторяет конфигурацию.
 
@@ -154,10 +158,10 @@ cmake --build build-msvc --config Release --parallel 4
 
 Скрипт сам собирает Release, выполняет install в новой staging-папке, добавляет runtime и лицензии, проверяет запуск и создаёт ZIP. У MSVC он копирует app-local CRT из `VCToolsRedistDir/x64/Microsoft.VC143.CRT`; вне developer shell передайте `-MsvcRuntimePath <каталог CRT>`. Для MinGW пути DLL запрашиваются у **настроенного** `g++.exe` через `-print-file-name`. Лицензии ищутся в `licenses`, `share/doc`, `share/licenses` выбранного toolchain; для другой раскладки передайте `-CompilerLicensePath <каталог лицензий>`. Нужны как минимум `COPYING3`, `COPYING.RUNTIME` и применимые notices MinGW-w64/winpthreads. Отсутствующие обязательные файлы останавливают упаковку.
 
-По умолчанию результат — `release/v0.1.0-pre-release-msvc/` или `release/v0.1.0-pre-release-mingw/`:
+По умолчанию результат — `release/v0.2.0-pre-release-msvc/` или `release/v0.2.0-pre-release-mingw/`:
 
-- `XLibrary-0.1.0-pre-release-windows-x64-<compiler>-portable.zip` с корневой папкой приложения;
-- `XLibrary-0.1.0-pre-release-windows-x64-<compiler>-setup.exe`, если задан `-Installer`;
+- `XLibrary-0.2.0-pre-release-windows-x64-<compiler>-portable.zip` с корневой папкой приложения;
+- `XLibrary-0.2.0-pre-release-windows-x64-<compiler>-setup.exe`, если задан `-Installer`;
 - `SHA256SUMS.txt` для ZIP и установщика.
 
 `-BuildPath` и `-OutputPath` принимают абсолютные пути или пути от корня репозитория. Существующий OutputPath не перезаписывается. После успеха staging удаляется; после ошибки остаётся в `build/release-<id>` для диагностики. Среда PATH восстанавливается и при ошибках. В Git попадают только исходники и скрипты; build/dist/release игнорируются.
@@ -177,10 +181,10 @@ XLibrary имеет MIT-лицензию; это не меняет лиценз�
 Распакуйте ZIP в доступный для записи каталог, включая путь с пробелами и Unicode:
 
 ```powershell
-Expand-Archive ./release/v0.1.0-pre-release-mingw/*-portable.zip -DestinationPath './build/Проверка пакета'
+Expand-Archive ./release/v0.2.0-pre-release-mingw/*-portable.zip -DestinationPath './build/Проверка пакета'
 $package = (Get-ChildItem './build/Проверка пакета' -Directory).FullName
 ./.github/scripts/check_package.ps1 -PackagePath $package -Compiler mingw
-Get-FileHash ./release/v0.1.0-pre-release-mingw/*-portable.zip -Algorithm SHA256
+Get-FileHash ./release/v0.2.0-pre-release-mingw/*-portable.zip -Algorithm SHA256
 ```
 
 Для MSVC замените каталог и `-Compiler msvc`. Сверьте хеш с `SHA256SUMS.txt`. Проверка проверяет DLL, метаданные и лицензии, запускает копию приложения с очищенным PATH и без Qt-переменных из IDE, из другого рабочего каталога с пробелами/Unicode. `--check-startup` создаёт окно и каталог во временном профиле и завершается с 0; проверяются запуск с флагом portable и без него, а также неизменность существующего portable-профиля. Логи: `build/package-check/`. Скрипт не меняет ваш рабочий пакет.
@@ -200,4 +204,38 @@ CI разделён на три проверки компиляции (MSVC Debu
 1. Дождитесь всех checks PR, включая CodeQL, clang-format, actionlint и оба package jobs. Просмотрите diff и `build-info.json`.
 2. Выполните ручную проверку выше для ZIP и установщика, включая обновление существующей установки. Сохраните результаты и проверьте отсутствие секретов, сертификатов и локальных путей.
 3. С чистого дерева нужного commit соберите публичные файлы выбранного toolchain, сохраните ZIP, setup.exe и SHA256SUMS.txt. CI artifacts — тестовые пакеты, они не публикуются автоматически.
-4. После отдельного решения о выпуске создайте тег версии и GitHub Release с отметкой **pre-release**, описанием ограничений Windows x64 и приложенными файлами. Сборка и PR сами не создают Release и не выполняют merge.
+4. После отдельного решения о выпуске создайте тег версии и GitHub Release с отметкой **pre-release**, описанием проверенных ОС, архитектур и ограничений и приложенными файлами. Сборка и PR сами не создают Release и не выполняют merge.
+
+## Ручная проверка импорта и сканирования
+
+Используйте копию профиля или отдельную portable-папку. JSON формата 1 сохраняет
+приложения и назначенные им теги, но не сценарии, настройки, неиспользуемые теги
+или историю. Это не полная резервная копия профиля.
+
+1. На Linux добавьте `/usr/bin/sleep`, экспортируйте JSON, импортируйте в пустой
+   временный профиль и сравните путь, аргументы, рабочую папку, избранное и теги.
+2. Измените тип `favorite` на строку или задайте относительный `path` во второй
+   записи. Импорт должен указать запись и поле и не добавить даже первую запись.
+   Повторите с неверным тегом, NUL, пустым именем, неверным корневым JSON,
+   неподдерживаемой версией и неправильным типом массива `applications`.
+3. Выполните сканирование дважды. Сравните отдельные счётчики добавлений, дублей,
+   пропусков и ошибок. Откройте подробности из библиотеки и настроек, скопируйте
+   отчёт; причины должны включать источники и полные пути.
+4. Отмените обнаружение и отдельно запись кандидатов до фиксации. Сравните число
+   записей и метаданные с исходными: частичных добавлений быть не должно.
+   Сразу повторите поиск: кнопки должны работать. Во время самой фиксации
+   отмена уже недоступна; поздний запрос не выдаётся за выполненный откат.
+
+Успешный `--check-startup` не подтверждает эти интерактивные сценарии.
+
+## Локализация
+
+Английский — базовый язык сообщений; русский каталог translations/xlibrary_ru.ts
+компилируется lrelease и встраивается в исполняемый файл. Рядом с программой
+не нужны отдельные файлы перевода XLibrary. По умолчанию используется первый
+поддерживаемый язык системного списка предпочтений; если подходящего языка
+нет или перевод не загружается, используется английский. Настройки → Общие
+позволяют выбрать системный язык, English или Русский; нужен перезапуск.
+
+Для добавления сообщений используйте QCoreApplication::translate с контекстом XLibrary и обновляйте
+русский TS-каталог. lrelease не запускается в пользовательском приложении.

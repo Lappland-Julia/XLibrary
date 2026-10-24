@@ -14,6 +14,7 @@
 #include <shlobj.h>
 #include <stdexcept>
 
+#include "localization.h"
 #include "platform_integration.h"
 #include "RegistryScan.h"
 
@@ -141,7 +142,8 @@ QSet<QString> desktop_platform::running_paths(const QVector<app_record> &applica
     }
     const auto raw_snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (raw_snapshot == INVALID_HANDLE_VALUE) {
-        throw std::runtime_error("Не удалось получить список процессов Windows.");
+        throw std::runtime_error(
+            QCoreApplication::translate("XLibrary", "Could not retrieve the Windows process list.").toStdString());
     }
     const unique_handle snapshot(raw_snapshot, &CloseHandle);
     PROCESSENTRY32W entry{};
@@ -169,7 +171,10 @@ bool desktop_platform::activate_window(const QString &path) {
         ShowWindowAsync(search.window, SW_RESTORE);
     }
     if (!SetForegroundWindow(search.window)) {
-        throw std::runtime_error("Windows не разрешила переключить окно. Выберите приложение на панели задач.");
+        throw std::runtime_error(
+            QCoreApplication::translate("XLibrary",
+                                        "Windows could not switch windows. Select the application on the taskbar.")
+                .toStdString());
     }
     return true;
 }
@@ -188,7 +193,8 @@ void desktop_platform::open_folder(const QString &path) {
     const auto result = reinterpret_cast<INT_PTR>(
         ShellExecuteW(nullptr, L"explore", directory.c_str(), nullptr, nullptr, SW_SHOWNORMAL));
     if (result <= 32)
-        throw std::runtime_error("Не удалось открыть папку приложения.");
+        throw std::runtime_error(
+            QCoreApplication::translate("XLibrary", "Could not open the application folder.").toStdString());
 }
 
 bool desktop_platform::open_url(const QUrl &url) {
@@ -215,35 +221,45 @@ app_record desktop_platform::resolve_application(const QString &path) {
         IShellLinkW *raw_link = nullptr;
         if (FAILED(CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLinkW,
                                     reinterpret_cast<void **>(&raw_link)))) {
-            throw std::runtime_error("Не удалось прочитать ярлык.");
+            throw std::runtime_error(
+                QCoreApplication::translate("XLibrary", "Could not read the shortcut.").toStdString());
         }
         const auto release_link = [](IShellLinkW *value) { value->Release(); };
         const std::unique_ptr<IShellLinkW, decltype(release_link)> link(raw_link, release_link);
         IPersistFile *raw_file = nullptr;
         if (FAILED(link->QueryInterface(IID_IPersistFile, reinterpret_cast<void **>(&raw_file)))) {
-            throw std::runtime_error("Не удалось открыть ярлык.");
+            throw std::runtime_error(
+                QCoreApplication::translate("XLibrary", "Could not open the shortcut.").toStdString());
         }
         const auto release_file = [](IPersistFile *value) { value->Release(); };
         const std::unique_ptr<IPersistFile, decltype(release_file)> file(raw_file, release_file);
         if (FAILED(file->Load(path.toStdWString().c_str(), STGM_READ))) {
-            throw std::runtime_error("Не удалось загрузить ярлык.");
+            throw std::runtime_error(
+                QCoreApplication::translate("XLibrary", "Could not load the shortcut.").toStdString());
         }
         wchar_t buffer[32768]{};
         if (FAILED(link->GetPath(buffer, static_cast<int>(std::size(buffer)), nullptr, 0)) || buffer[0] == L'\0') {
-            throw std::runtime_error("Ярлык не содержит путь к обычному приложению.");
+            throw std::runtime_error(
+                QCoreApplication::translate("XLibrary", "The shortcut has no path to a regular application.")
+                    .toStdString());
         }
         result.path = QString::fromWCharArray(buffer);
         buffer[0] = L'\0';
         if (FAILED(link->GetArguments(buffer, static_cast<int>(std::size(buffer)))))
-            throw std::runtime_error("Не удалось прочитать аргументы ярлыка.");
+            throw std::runtime_error(
+                QCoreApplication::translate("XLibrary", "Could not read the shortcut arguments.").toStdString());
         result.arguments = QString::fromWCharArray(buffer);
         buffer[0] = L'\0';
         if (FAILED(link->GetWorkingDirectory(buffer, static_cast<int>(std::size(buffer)))))
-            throw std::runtime_error("Не удалось прочитать рабочую папку ярлыка.");
+            throw std::runtime_error(
+                QCoreApplication::translate("XLibrary", "Could not read the shortcut working directory.")
+                    .toStdString());
         result.working_directory = QString::fromWCharArray(buffer);
         // Непригодный ярлык пропускается при поиске до общей транзакции импорта.
         if (!result.working_directory.isEmpty() && !QFileInfo(result.working_directory).isAbsolute()) {
-            throw std::invalid_argument("Рабочая папка должна быть абсолютным путём.");
+            throw std::invalid_argument(
+                QCoreApplication::translate("XLibrary", "The working directory must be an absolute path.")
+                    .toStdString());
         }
     }
     const Application application(std::filesystem::path(result.path.toStdWString()));
@@ -255,21 +271,22 @@ app_record desktop_platform::resolve_application(const QString &path) {
     return result;
 }
 
-QVector<app_record> desktop_platform::discover(bool registry, bool start_menu, QStringList &issues,
+QVector<app_record> desktop_platform::discover(bool registry, bool start_menu, QVector<discovery_issue> &issues,
                                                const std::atomic_bool &cancelled,
                                                const std::function<void(const discovery_progress &)> &progress) {
     QVector<app_record> result;
     QStringList shortcuts;
     // Сначала собираем очередь: её размер не меняется во время чтения ярлыков и метаданных EXE.
     if (progress)
-        progress({-1, 0, 0, "Подготовка списка приложений…"});
+        progress({-1, 0, 0, QCoreApplication::translate("XLibrary", "Preparing the application list…")});
     if (start_menu) {
         for (const auto *folder : {&FOLDERID_Programs, &FOLDERID_CommonPrograms}) {
             if (cancelled.load())
                 return {};
             PWSTR raw_path = nullptr;
             if (FAILED(SHGetKnownFolderPath(*folder, 0, nullptr, &raw_path))) {
-                issues.append("Недоступна папка меню «Пуск».");
+                issues.append(discovery_issue{
+                    "Start Menu", QCoreApplication::translate("XLibrary", "The Start menu folder is unavailable.")});
                 continue;
             }
             const QString directory = QString::fromWCharArray(raw_path);
@@ -289,12 +306,13 @@ QVector<app_record> desktop_platform::discover(bool registry, bool start_menu, Q
     };
     if (registry && !cancelled.load()) {
         std::vector<xlibrary::scan_issue> registry_issues;
-        const auto applications = xlibrary::scan_registry_applications(&registry_issues, [&](std::size_t processed,
-                                                                                             std::size_t total) {
-            registry_count = static_cast<qsizetype>(total);
-            report(static_cast<qsizetype>(processed), registry_count + shortcuts.size(), "Проверка реестра Windows");
-            return !cancelled.load();
-        });
+        const auto applications =
+            xlibrary::scan_registry_applications(&registry_issues, [&](std::size_t processed, std::size_t total) {
+                registry_count = static_cast<qsizetype>(total);
+                report(static_cast<qsizetype>(processed), registry_count + shortcuts.size(),
+                       QCoreApplication::translate("XLibrary", "Checking the Windows registry"));
+                return !cancelled.load();
+            });
         for (const auto &application : applications) {
             if (cancelled.load())
                 return {};
@@ -303,28 +321,46 @@ QVector<app_record> desktop_platform::discover(bool registry, bool start_menu, Q
             record.path = QDir::fromNativeSeparators(QString::fromStdWString(application.get_file_path().wstring()));
             if (should_import_application(record))
                 result.append(std::move(record));
+            else
+                issues.append(discovery_issue{
+                    record.path, QCoreApplication::translate("XLibrary", "System component or uninstaller."),
+                    discovery_issue_kind::skipped});
         }
-        if (!registry_issues.empty())
-            issues.append(QString("Недоступно разделов реестра: %1").arg(registry_issues.size()));
+        for (const auto &issue : registry_issues) {
+            const auto root = issue.source.scope == xlibrary::registry_scope::current_user ? "HKCU" : "HKLM";
+            issues.append(discovery_issue{
+                QString("%1\\%2 [%3]")
+                    .arg(root, QString::fromStdWString(issue.source.key))
+                    .arg(issue.source.view == KEY_WOW64_32KEY ? 32 : 64),
+                QString("%1: Win32 %2").arg(QString::fromStdWString(issue.operation)).arg(issue.error)});
+        }
     }
     const auto total = registry_count + shortcuts.size();
     for (qsizetype index = 0; index < shortcuts.size(); ++index) {
         if (cancelled.load())
             return {};
-        report(registry_count + index, total, "Проверка ярлыков меню «Пуск»");
+        report(registry_count + index, total, QCoreApplication::translate("XLibrary", "Checking Start menu shortcuts"));
         const auto &path = shortcuts[index];
         try {
             const auto record = resolve_application(path);
             if (record.available && QFileInfo(record.path).suffix().compare("exe", Qt::CaseInsensitive) == 0 &&
                 should_import_application(record))
                 result.append(record);
-        } catch (const std::exception &) {
-            issues.append(QFileInfo(path).fileName());
+            else
+                issues.append(discovery_issue{
+                    path,
+                    !record.available ? QCoreApplication::translate("XLibrary", "The target file is missing.")
+                    : QFileInfo(record.path).suffix().compare("exe", Qt::CaseInsensitive) != 0
+                        ? QCoreApplication::translate("XLibrary", "The shortcut target is not an EXE.")
+                        : QCoreApplication::translate("XLibrary", "System component or uninstaller."),
+                    discovery_issue_kind::skipped});
+        } catch (const std::exception &error) {
+            issues.append(discovery_issue{path, QString::fromUtf8(error.what())});
         }
     }
     if (cancelled.load())
         return {};
-    report(total, total, "Проверка приложений завершена");
+    report(total, total, QCoreApplication::translate("XLibrary", "Application checks complete"));
     return result;
 }
 
@@ -338,7 +374,7 @@ bool desktop_platform::set_autostart(bool enabled, QString &error) {
     }
     startup.sync();
     if (startup.status() != QSettings::NoError) {
-        error = "Не удалось изменить автозапуск в реестре Windows.";
+        error = QCoreApplication::translate("XLibrary", "Could not change autostart in the Windows registry.");
         return false;
     }
     return true;
@@ -381,7 +417,7 @@ bool GlobalHotkey::set_sequence(const QKeySequence &value, QString &error) {
         return true;
     }
     if (value.count() != 1) {
-        error = "Используйте одно сочетание клавиш.";
+        error = QCoreApplication::translate("XLibrary", "Use a single key combination.");
         return false;
     }
     const auto combination = value[0];
@@ -396,12 +432,12 @@ bool GlobalHotkey::set_sequence(const QKeySequence &value, QString &error) {
     } else if (key == Qt::Key_Space) {
         virtual_key = VK_SPACE;
     } else {
-        error = "Используйте букву, цифру, F1–F24 или пробел.";
+        error = QCoreApplication::translate("XLibrary", "Use a letter, digit, F1–F24, or Space.");
         return false;
     }
     const auto modifiers = combination.keyboardModifiers();
     if (!(modifiers & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier))) {
-        error = "Добавьте Ctrl, Alt или Win к глобальному сочетанию.";
+        error = QCoreApplication::translate("XLibrary", "Add Ctrl, Alt, or Win to the global shortcut.");
         return false;
     }
     UINT flags = MOD_NOREPEAT;
@@ -415,7 +451,7 @@ bool GlobalHotkey::set_sequence(const QKeySequence &value, QString &error) {
         flags |= MOD_WIN;
     const auto new_id = next_id++;
     if (!RegisterHotKey(nullptr, new_id, flags, virtual_key)) {
-        error = "Сочетание занято Windows или другим приложением.";
+        error = QCoreApplication::translate("XLibrary", "The shortcut is in use by Windows or another application.");
         return false;
     }
     if (current_id) {

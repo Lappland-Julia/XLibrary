@@ -48,6 +48,23 @@ An app can belong to more than one part of your day. Give your browser both `#wo
 | **Appearance** | Choose a light, dark, or system theme and adjust the text size. |
 | **Local storage** | Keep your catalog in SQLite. Import and export application entries, tags, and favorites as JSON. |
 
+## Import and discovery
+
+JSON format 1 stores application names, absolute paths, launch arguments, working directories,
+favorites, and assigned tags. Linux executable paths do not need a filename extension. Optional
+fields may be omitted; supplied fields must have the expected JSON types. Import validates the
+entire file before writing and reports the record number, field, and reason on invalid input.
+An import error leaves the catalog unchanged. Files are limited to 5 MiB.
+
+Discovery keeps a report in the library and in Settings → Library. Open **Last scan details** to
+read or copy it. The summary separates additions, duplicates, skipped entries, and errors.
+Duplicate names or normalized paths are skipped; existing entries keep their metadata.
+Cancelling discovery before its transaction is committed rolls back all additions. Once commit
+starts, cancellation is unavailable. JSON import and discovery never launch applications.
+
+JSON export is an application catalog transfer, not a complete profile backup: scenarios,
+unused tags, settings, and launch history are not included.
+
 ## Search
 
 Search by app name or executable filename, then narrow the results with your own tags.
@@ -64,9 +81,9 @@ Press <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>Space</kbd> to bring up the librar
 
 ## Development
 
-XLibrary is built with **C++23**, **Qt 6 Widgets**, and **SQLite**. It targets **Windows 10/11 and Linux**. The current application interface is in Russian.
+XLibrary is built with **C++23**, **Qt 6 Widgets**, and **SQLite**. It targets **Windows 10/11 and Linux**. The interface supports English and Russian. It follows the system's preferred supported language by default and falls back to English. Choose a language in Settings → General and restart XLibrary to apply it. The application translation is embedded in the executable.
 
-Building from source requires a C++23 compiler, **CMake 3.21+**, and **Qt 6.5+** with the Widgets, Concurrent, and Network modules (plus DBus on Linux). CMake downloads SQLite during the initial configuration. See [Building on Windows and Linux](BUILDING.md) for CLion presets, GCC/Clang and MSVC/MinGW builds, portable packages, installers, and release verification.
+Building from source requires a C++23 compiler, **CMake 3.21+**, and **Qt 6.5+** with the Widgets, Concurrent, and Network modules, and the LinguistTools build tools (plus DBus on Linux). CMake downloads SQLite during the initial configuration. See [Building on Windows and Linux](BUILDING.md) for CLion presets, GCC/Clang and MSVC/MinGW builds, portable packages, installers, and release verification.
 
 Planned work includes a compact launcher mode, further search improvements, and extensibility. These are development directions rather than a release schedule.
 

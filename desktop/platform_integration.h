@@ -28,7 +28,8 @@ void open_folder(const QString &path);
 bool open_url(const QUrl &url);
 QImage application_icon(const QString &path);
 app_record resolve_application(const QString &path);
-QVector<app_record> discover(bool registry, bool start_menu, QStringList &issues, const std::atomic_bool &cancelled,
+QVector<app_record> discover(bool registry, bool start_menu, QVector<discovery_issue> &issues,
+                             const std::atomic_bool &cancelled,
                              const std::function<void(const discovery_progress &)> &progress = {});
 bool set_autostart(bool enabled, QString &error);
 bool animations_enabled();
