@@ -143,6 +143,7 @@ qt_add_executable(XLibrary WIN32
         desktop/selection_button.h desktop/selection_button.cpp
         desktop/library_splitter.h desktop/library_splitter.cpp
         desktop/ui_registry.h desktop/ui_helpers.h
+        desktop/notification_banner.h desktop/notification_banner.cpp
         desktop/editors.h desktop/editors.cpp
         desktop/library_views.h desktop/library_views.cpp
         desktop/settings_view.h desktop/settings_view.cpp

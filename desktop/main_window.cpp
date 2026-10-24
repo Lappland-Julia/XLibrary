@@ -5,11 +5,8 @@
 #include <QJsonObject>
 #include <QLineEdit>
 #include <QMenu>
-#include <QProgressBar>
-#include <QPropertyAnimation>
 #include <QStackedWidget>
 #include <QStyleHints>
-#include <QToolButton>
 
 #include "appearance.h"
 #include "editors.h"
@@ -17,6 +14,7 @@
 #include "library_views.h"
 #include "localization.h"
 #include "main_window.h"
+#include "notification_banner.h"
 #include "settings_view.h"
 #include "ui_helpers.h"
 
@@ -33,70 +31,18 @@ QWidget *shell(const ui_context &context, QWidget *parent) {
     auto *center = new QWidget;
     auto *body = new QVBoxLayout(center);
     body->setContentsMargins(20, 16, 20, 16);
-    body->setSpacing(20);
+    body->setSpacing(0);
     body->addWidget(context.registry->create("search_bar", context, center));
+    body->addSpacing(20);
     auto *pages = new QStackedWidget;
     pages->addWidget(context.registry->create("library", context, pages));
     pages->addWidget(context.registry->create("scenarios", context, pages));
     auto *transition = new PageTransition(pages);
     body->addWidget(transition, 1);
-    auto *notice = new QFrame;
-    notice->setObjectName("notification");
-    auto *notice_layout = new QVBoxLayout(notice);
-    notice_layout->setContentsMargins(14, 10, 10, 8);
-    notice_layout->setSpacing(8);
-    auto *notice_contents = new QHBoxLayout;
-    notice_contents->setSpacing(10);
-    auto *notice_icon = new QLabel;
-    auto *notice_text = label("");
-    notice_text->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    auto *dismiss = new QToolButton;
-    dismiss->setObjectName("notification_dismiss");
-    dismiss->setCursor(Qt::PointingHandCursor);
-    dismiss->setAccessibleName(QCoreApplication::translate("XLibrary", "Dismiss notification"));
-    dismiss->setToolTip(QCoreApplication::translate("XLibrary", "Dismiss notification"));
-    auto *notice_progress = new QProgressBar;
-    notice_progress->setObjectName("notification_progress");
-    notice_progress->setAccessibleName(QCoreApplication::translate("XLibrary", "Notification display time"));
-    notice_progress->setRange(0, 7000);
-    notice_progress->setTextVisible(false);
-    auto *notice_animation = new QPropertyAnimation(notice_progress, "value", notice);
-    notice_animation->setDuration(7000);
-    notice_animation->setStartValue(0);
-    notice_animation->setEndValue(7000);
-    notice_animation->setEasingCurve(QEasingCurve::Linear);
-    QObject::connect(notice_animation, &QPropertyAnimation::finished, notice, &QWidget::hide);
-    auto update_notice = [=] {
-        const QColor color(appearance::is_dark(*context.settings) ? "#A8A9AF" : "#555B64");
-        const auto icon_size = appearance::scaled(*context.settings, 20);
-        notice_icon->setPixmap(appearance::icon("info", color).pixmap(icon_size, icon_size));
-        notice_icon->setFixedSize(icon_size, icon_size);
-        dismiss->setIcon(appearance::icon("x", color));
-        dismiss->setIconSize(QSize(icon_size, icon_size));
-        const auto close_size = appearance::scaled(*context.settings, 28);
-        dismiss->setFixedSize(close_size, close_size);
-        notice_progress->setFixedHeight(appearance::scaled(*context.settings, 4));
-    };
-    update_notice();
-    QObject::connect(service, &DesktopService::appearance_changed, notice, update_notice);
-    notice_contents->addWidget(notice_icon, 0, Qt::AlignVCenter);
-    notice_contents->addWidget(notice_text, 1);
-    notice_contents->addWidget(dismiss, 0, Qt::AlignTop);
-    notice_layout->addLayout(notice_contents);
-    notice_layout->addWidget(notice_progress);
-    notice->hide();
+    auto *notice = new NotificationBanner(*context.settings, 20);
+    QObject::connect(service, &DesktopService::appearance_changed, notice, &NotificationBanner::refresh_appearance);
     body->addWidget(notice);
-    QObject::connect(dismiss, &QToolButton::clicked, notice, [=] {
-        notice_animation->stop();
-        notice->hide();
-    });
-    const auto show_notice = [=](const QString &text) {
-        notice_animation->stop();
-        notice_progress->setValue(0);
-        notice_text->setText(text);
-        notice->show();
-        notice_animation->start();
-    };
+    const auto show_notice = [=](const QString &text) { notice->show_message(text); };
     QObject::connect(service, &DesktopService::message, notice, show_notice);
     QObject::connect(service, &DesktopService::scenario_changed, notice, show_notice);
     auto *splitter = new LibrarySplitter(*context.settings, navigation, center,

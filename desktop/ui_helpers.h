@@ -2,11 +2,13 @@
 #define XLIBRARY_UI_HELPERS_H
 
 #include <QDialog>
+#include <QEvent>
 #include <QFrame>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPainter>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QScreen>
 #include <QScrollArea>
 #include <QVariantAnimation>
@@ -18,6 +20,86 @@
 #include "ui_registry.h"
 
 namespace ui_helpers {
+class AnimatedReveal : public QWidget {
+protected:
+    QWidget *contents;
+
+private:
+    QVariantAnimation *animation;
+    int spacing;
+    int displayed_height = 0;
+    bool expanded = false;
+
+    int preferred_height() const {
+        const auto height =
+            contents->hasHeightForWidth() ? contents->heightForWidth(width()) : contents->sizeHint().height();
+        return qMax(height, contents->minimumSizeHint().height()) + spacing;
+    }
+
+    void update_height() {
+        const auto target = expanded ? preferred_height() : 0;
+        if (animation->state() == QAbstractAnimation::Running && animation->endValue().toInt() == target)
+            return;
+        animation->stop();
+        if (!window()->isVisible() || !desktop_platform::animations_enabled() || target == displayed_height) {
+            displayed_height = target;
+            updateGeometry();
+            if (!expanded)
+                hide();
+            return;
+        }
+        animation->setStartValue(displayed_height);
+        animation->setEndValue(target);
+        animation->start();
+    }
+
+protected:
+    bool eventFilter(QObject *object, QEvent *event) override {
+        if (object == contents && event->type() == QEvent::LayoutRequest)
+            update_height();
+        return QWidget::eventFilter(object, event);
+    }
+
+    void resizeEvent(QResizeEvent *event) override {
+        QWidget::resizeEvent(event);
+        // Содержимое сохраняет полную высоту, а родитель плавно открывает его без сжатия текста.
+        contents->setGeometry(0, spacing, width(), preferred_height() - spacing);
+        update_height();
+    }
+
+public:
+    explicit AnimatedReveal(QWidget *contents, int spacing = 0, QWidget *parent = nullptr)
+        : QWidget(parent), contents(contents), animation(new QVariantAnimation(this)), spacing(spacing) {
+        contents->setParent(this);
+        contents->installEventFilter(this);
+        contents->show();
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        animation->setDuration(180);
+        animation->setEasingCurve(QEasingCurve::OutCubic);
+        connect(animation, &QVariantAnimation::valueChanged, this, [this](const QVariant &value) {
+            displayed_height = value.toInt();
+            updateGeometry();
+        });
+        connect(animation, &QVariantAnimation::finished, this, [this] {
+            if (!expanded)
+                hide();
+        });
+        hide();
+    }
+
+    QSize sizeHint() const override { return {contents->sizeHint().width(), displayed_height}; }
+    QSize minimumSizeHint() const override { return {contents->minimumSizeHint().width(), 0}; }
+
+    void set_expanded(bool value) {
+        expanded = value;
+        if (expanded) {
+            contents->ensurePolished();
+            show();
+        }
+        update_height();
+    }
+};
+
 class TransitionOverlay : public QWidget {
 public:
     QPixmap snapshot;

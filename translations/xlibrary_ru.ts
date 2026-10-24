@@ -4,10 +4,6 @@
 <context>
     <name>XLibrary</name>
     <message>
-        <source>Dismiss scan details</source>
-        <translation>Скрыть кнопку подробностей сканирования</translation>
-    </message>
-    <message>
         <source>Notification display time</source>
         <translation>Время показа уведомления</translation>
     </message>

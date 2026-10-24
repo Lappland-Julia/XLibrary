@@ -25,6 +25,7 @@
 #include "desktop_service.h"
 #include "library_views.h"
 #include "localization.h"
+#include "notification_banner.h"
 #include "selection_button.h"
 #include "ui_helpers.h"
 
@@ -340,34 +341,23 @@ QWidget *discovery_status(const ui_context &context, QWidget *parent) {
     auto *container = new QWidget(parent);
     auto *container_layout = new QVBoxLayout(container);
     container_layout->setContentsMargins(0, 0, 0, 0);
+    container_layout->setSpacing(0);
     auto *panel = new QFrame(container);
-    container_layout->addWidget(panel);
-    auto *details_row = new QWidget;
-    auto *details_layout = new QHBoxLayout(details_row);
-    details_layout->setContentsMargins(0, 0, 0, 0);
-    details_layout->setSpacing(8);
-    auto *details = button(QCoreApplication::translate("XLibrary", "Last scan details…"));
-    details_layout->addWidget(details, 1);
-    auto *dismiss_details = button("");
-    dismiss_details->setAccessibleName(QCoreApplication::translate("XLibrary", "Dismiss scan details"));
-    dismiss_details->setToolTip(dismiss_details->accessibleName());
-    dismiss_details->setCursor(Qt::PointingHandCursor);
-    const auto update_details_style = [=] {
-        const QColor color(appearance::is_dark(*context.settings) ? "#A8A9AF" : "#555B64");
-        dismiss_details->setIcon(appearance::icon("x", color));
-        const auto icon_size = appearance::scaled(*context.settings, 16);
-        dismiss_details->setIconSize(QSize(icon_size, icon_size));
-        dismiss_details->setFixedWidth(appearance::scaled(*context.settings, 44));
+    auto *panel_reveal = new AnimatedReveal(panel);
+    container_layout->addWidget(panel_reveal);
+    auto *details_notice = new NotificationBanner(*context.settings, 8, 30000);
+    container_layout->addWidget(details_notice);
+    QObject::connect(service, &DesktopService::appearance_changed, details_notice,
+                     &NotificationBanner::refresh_appearance);
+    const auto update_details = [=] {
+        if (service->discovery_report().isEmpty())
+            details_notice->dismiss();
+        else
+            details_notice->show_message(QCoreApplication::translate("XLibrary", "Last scan details…"), true);
     };
-    QObject::connect(service, &DesktopService::appearance_changed, details_row, update_details_style);
-    update_details_style();
-    details_layout->addWidget(dismiss_details);
-    QObject::connect(dismiss_details, &QPushButton::clicked, details_row, &QWidget::hide);
-    container_layout->addWidget(details_row);
-    const auto update_details = [=] { details_row->setVisible(!service->discovery_report().isEmpty()); };
     QObject::connect(service, &DesktopService::discovery_report_changed, container, update_details);
     update_details();
-    QObject::connect(details, &QPushButton::clicked, container, [=] {
+    details_notice->activated = [=] {
         QDialog dialog(container);
         dialog.setWindowTitle(QCoreApplication::translate("XLibrary", "Scan details"));
         prepare_dialog(&dialog, context, QSize(760, 480));
@@ -385,7 +375,7 @@ QWidget *discovery_status(const ui_context &context, QWidget *parent) {
         QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
         dialog_layout->addWidget(buttons);
         dialog.exec();
-    });
+    };
     panel->setObjectName("discovery_panel");
     auto *layout = new QVBoxLayout(panel);
     layout->setContentsMargins(16, 12, 16, 12);
@@ -414,10 +404,9 @@ QWidget *discovery_status(const ui_context &context, QWidget *parent) {
         const auto &progress = service->discovery_status();
         const bool active = service->is_discovering();
         if (!active && progress.percent != 100) {
-            panel->hide();
+            panel_reveal->set_expanded(false);
             return;
         }
-        panel->show();
         stage->setText(progress.stage);
         const bool indeterminate = progress.percent < 0;
         bar->setRange(0, indeterminate ? 0 : 100);
@@ -435,10 +424,11 @@ QWidget *discovery_status(const ui_context &context, QWidget *parent) {
         cancel->setEnabled(service->can_cancel_discovery());
         cancel->setText(service->is_cancelling_discovery() ? QCoreApplication::translate("XLibrary", "Cancelling…")
                                                            : QCoreApplication::translate("XLibrary", "Cancel"));
+        panel_reveal->set_expanded(true);
         if (!active) {
             QTimer::singleShot(1200, panel, [=] {
                 if (!service->is_discovering())
-                    panel->hide();
+                    panel_reveal->set_expanded(false);
             });
         }
     };
@@ -545,7 +535,8 @@ QWidget *library(const ui_context &context, QWidget *parent) {
     empty_layout->addWidget(empty_actions, 0, Qt::AlignHCenter);
     empty_layout->addStretch();
     stack->addWidget(empty);
-    root->addWidget(stack_widget, 1);
+    auto *library_transition = new PageTransition(stack_widget);
+    root->addWidget(library_transition, 1);
     auto *footer = new QHBoxLayout;
     footer->addWidget(label(QCoreApplication::translate(
                                 "XLibrary", "↑↓  Select     Enter  Launch     Delete  Remove     Ctrl+K  Search"),
@@ -557,6 +548,7 @@ QWidget *library(const ui_context &context, QWidget *parent) {
     auto update = [=] {
         const bool has_rows = service->filter.rowCount() > 0;
         const bool no_apps = service->is_ready() && service->model.rowCount() == 0;
+        const auto *previous_page = stack->currentWidget();
         stack->setCurrentWidget(has_rows ? static_cast<QWidget *>(view) : empty);
         empty_actions->setVisible(no_apps);
         if (no_apps && empty_layout->indexOf(progress) < 0) {
@@ -577,6 +569,8 @@ QWidget *library(const ui_context &context, QWidget *parent) {
                               ? QCoreApplication::translate("XLibrary", "Select a file or find installed applications.")
                               : QCoreApplication::translate("XLibrary", "Change the query or select another section."));
         }
+        if (previous_page != stack->currentWidget())
+            library_transition->start();
         if (!has_rows) {
             service->select(0);
             return;
