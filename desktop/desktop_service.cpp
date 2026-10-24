@@ -453,8 +453,11 @@ void DesktopService::import_catalog(const QString &path) {
             for (const auto &tag : object.value("tags").toArray())
                 if (!tag.toString().trimmed().isEmpty())
                     record.tags.append(tag.toString().trimmed());
-            if (record.name.isEmpty() || !QFileInfo(record.path).isAbsolute() ||
-                QFileInfo(record.path).suffix().isEmpty())
+            if (record.name.isEmpty() || !QFileInfo(record.path).isAbsolute()
+#ifdef Q_OS_WIN
+                || QFileInfo(record.path).suffix().isEmpty()
+#endif
+            )
                 throw std::runtime_error("В файле есть запись без имени или абсолютного пути.");
             records.append(std::move(record));
         }
