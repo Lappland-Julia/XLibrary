@@ -360,8 +360,10 @@ void CatalogStore::clear_history() {
     execute("UPDATE desktop_application SET last_launch = 0;");
 }
 
-int CatalogStore::import_records(const QVector<app_record> &records, const std::atomic_bool *cancelled,
-                                 const std::function<void(qsizetype, qsizetype)> &progress) {
+catalog_import_result CatalogStore::import_records(const QVector<app_record> &records,
+                                                   const std::atomic_bool *cancelled,
+                                                   const std::function<void(qsizetype, qsizetype)> &progress,
+                                                   QVector<discovery_issue> *issues) {
     Transaction transaction(database.get_connection());
     QSet<QString> names;
     QSet<QString> paths;
@@ -370,7 +372,7 @@ int CatalogStore::import_records(const QVector<app_record> &records, const std::
         names.insert(current.text(0));
         paths.insert(normalized_path(current.text(1)));
     }
-    int count = 0;
+    catalog_import_result result;
     for (qsizetype index = 0; index < records.size(); ++index) {
         if (cancelled && cancelled->load())
             throw std::runtime_error("Поиск приложений отменён.");
@@ -378,15 +380,28 @@ int CatalogStore::import_records(const QVector<app_record> &records, const std::
             progress(index, records.size());
         const auto &record = records[index];
         const auto path = normalized_path(record.path);
-        if (!names.contains(record.name) && !paths.contains(path)) {
+        if (names.contains(record.name) || paths.contains(path)) {
+            ++result.duplicates;
+            if (issues)
+                issues->append(discovery_issue{record.path,
+                                               names.contains(record.name)
+                                                   ? "В библиотеке уже есть запись с таким именем."
+                                                   : "В библиотеке уже есть запись с таким путём.",
+                                               discovery_issue_kind::duplicate});
+        } else {
             validate_application(record);
-            if (!database.add_application(record.name.toStdString(), filesystem_path(record.path)))
+            if (!database.add_application(record.name.toStdString(), filesystem_path(record.path))) {
+                ++result.duplicates;
+                if (issues)
+                    issues->append(
+                        discovery_issue{record.path, "Запись уже существует в базе.", discovery_issue_kind::duplicate});
                 continue;
+            }
             const auto id = sqlite3_last_insert_rowid(database.get_connection());
             write_metadata(id, record);
             names.insert(record.name);
             paths.insert(path);
-            ++count;
+            ++result.added;
         }
     }
     if (cancelled && cancelled->load())
@@ -394,5 +409,5 @@ int CatalogStore::import_records(const QVector<app_record> &records, const std::
     transaction.commit();
     if (progress)
         progress(records.size(), records.size());
-    return count;
+    return result;
 }

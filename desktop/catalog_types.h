@@ -39,6 +39,11 @@ struct discovery_issue {
     discovery_issue_kind kind = discovery_issue_kind::error;
 };
 
+struct catalog_import_result {
+    qsizetype added = 0;
+    qsizetype duplicates = 0;
+};
+
 struct scenario_step {
     qint64 application_id = 0;
     int delay_ms = 0;

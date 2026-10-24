@@ -17,6 +17,44 @@
 #include "path_helpers.h"
 #include "platform_integration.h"
 
+namespace {
+QString discovery_summary(qsizetype added, const QVector<discovery_issue> &issues, const QString &status) {
+    qsizetype duplicates = 0;
+    qsizetype skipped = 0;
+    qsizetype errors = 0;
+    for (const auto &issue : issues) {
+        switch (issue.kind) {
+        case discovery_issue_kind::duplicate:
+            ++duplicates;
+            break;
+        case discovery_issue_kind::skipped:
+            ++skipped;
+            break;
+        case discovery_issue_kind::error:
+            ++errors;
+            break;
+        }
+    }
+    return QString("%1 Добавлено: %2. Дубли: %3. Пропущено: %4. Ошибки: %5.")
+        .arg(status)
+        .arg(added)
+        .arg(duplicates)
+        .arg(skipped)
+        .arg(errors);
+}
+
+QString discovery_details(const QString &summary, const QVector<discovery_issue> &issues) {
+    QStringList details{summary};
+    for (const auto &issue : issues) {
+        const auto kind = issue.kind == discovery_issue_kind::duplicate ? "Дубль"
+                          : issue.kind == discovery_issue_kind::skipped ? "Пропуск"
+                                                                        : "Ошибка";
+        details.append(QString("[%1] %2: %3").arg(kind, issue.source, issue.reason));
+    }
+    return details.join('\n');
+}
+}
+
 class CatalogWorker : public QObject {
     Q_OBJECT
     QString database_path;
@@ -377,21 +415,18 @@ void DesktopService::discover() {
             scan_progress = {90, 0, result.first.size(), "Добавление приложений в библиотеку"};
             emit discovery_progress_changed();
             enqueue("discover", [applications = std::move(result.first), issues = std::move(result.second),
-                                 cancelled = discovery_cancelled, report_progress](CatalogWorker &worker) {
+                                 cancelled = discovery_cancelled, report_progress](CatalogWorker &worker) mutable {
                 const auto count = worker.store->import_records(
-                    applications, cancelled.get(), [&](qsizetype processed, qsizetype total) {
+                    applications, cancelled.get(),
+                    [&](qsizetype processed, qsizetype total) {
                         report_progress({total > 0 ? 90 + static_cast<int>(9.0 * processed / total) : 99, processed,
                                          total, "Добавление приложений в библиотеку"});
-                    });
+                    },
+                    &issues);
                 report_progress({99, applications.size(), applications.size(), "Обновление библиотеки"});
                 worker.refresh();
-                QString message = QString("Добавлено приложений: %1.").arg(count);
-                if (!issues.isEmpty())
-                    message += QString(" Диагностических сообщений: %1.").arg(issues.size());
-                QStringList details{message};
-                for (const auto &issue : issues)
-                    details.append(QString("%1: %2").arg(issue.source, issue.reason));
-                emit worker.discovery_report_ready(details.join('\n'));
+                const auto message = discovery_summary(count.added, issues, "Сканирование завершено.");
+                emit worker.discovery_report_ready(discovery_details(message, issues));
                 emit worker.notification(message);
             });
         } catch (const std::exception &error) {
@@ -512,9 +547,10 @@ void DesktopService::import_catalog(const QString &path) {
                 fail("working_directory", "ожидается пустая строка или абсолютный путь");
             records.append(std::move(record));
         }
-        const int count = worker.store->import_records(records);
+        const auto count = worker.store->import_records(records);
         worker.refresh();
-        emit worker.notification(QString("Импортировано приложений: %1. Дубли пропущены.").arg(count));
+        emit worker.notification(
+            QString("Импортировано приложений: %1. Дубли: %2.").arg(count.added).arg(count.duplicates));
     });
 }
 
