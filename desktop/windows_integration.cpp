@@ -255,7 +255,7 @@ app_record desktop_platform::resolve_application(const QString &path) {
     return result;
 }
 
-QVector<app_record> desktop_platform::discover(bool registry, bool start_menu, QStringList &issues,
+QVector<app_record> desktop_platform::discover(bool registry, bool start_menu, QVector<discovery_issue> &issues,
                                                const std::atomic_bool &cancelled,
                                                const std::function<void(const discovery_progress &)> &progress) {
     QVector<app_record> result;
@@ -269,7 +269,7 @@ QVector<app_record> desktop_platform::discover(bool registry, bool start_menu, Q
                 return {};
             PWSTR raw_path = nullptr;
             if (FAILED(SHGetKnownFolderPath(*folder, 0, nullptr, &raw_path))) {
-                issues.append("Недоступна папка меню «Пуск».");
+                issues.append(discovery_issue{"Start Menu", "Недоступна папка меню «Пуск»."});
                 continue;
             }
             const QString directory = QString::fromWCharArray(raw_path);
@@ -303,9 +303,18 @@ QVector<app_record> desktop_platform::discover(bool registry, bool start_menu, Q
             record.path = QDir::fromNativeSeparators(QString::fromStdWString(application.get_file_path().wstring()));
             if (should_import_application(record))
                 result.append(std::move(record));
+            else
+                issues.append(discovery_issue{record.path, "Системный компонент или деинсталлятор.",
+                                              discovery_issue_kind::skipped});
         }
-        if (!registry_issues.empty())
-            issues.append(QString("Недоступно разделов реестра: %1").arg(registry_issues.size()));
+        for (const auto &issue : registry_issues) {
+            const auto root = issue.source.scope == xlibrary::registry_scope::current_user ? "HKCU" : "HKLM";
+            issues.append(discovery_issue{
+                QString("%1\\%2 [%3]")
+                    .arg(root, QString::fromStdWString(issue.source.key))
+                    .arg(issue.source.view == KEY_WOW64_32KEY ? 32 : 64),
+                QString("%1: Win32 %2").arg(QString::fromStdWString(issue.operation)).arg(issue.error)});
+        }
     }
     const auto total = registry_count + shortcuts.size();
     for (qsizetype index = 0; index < shortcuts.size(); ++index) {
@@ -318,8 +327,15 @@ QVector<app_record> desktop_platform::discover(bool registry, bool start_menu, Q
             if (record.available && QFileInfo(record.path).suffix().compare("exe", Qt::CaseInsensitive) == 0 &&
                 should_import_application(record))
                 result.append(record);
-        } catch (const std::exception &) {
-            issues.append(QFileInfo(path).fileName());
+            else
+                issues.append(discovery_issue{path,
+                                              !record.available ? "Целевой файл отсутствует."
+                                              : QFileInfo(record.path).suffix().compare("exe", Qt::CaseInsensitive) != 0
+                                                  ? "Цель ярлыка не является EXE."
+                                                  : "Системный компонент или деинсталлятор.",
+                                              discovery_issue_kind::skipped});
+        } catch (const std::exception &error) {
+            issues.append(discovery_issue{path, QString::fromUtf8(error.what())});
         }
     }
     if (cancelled.load())

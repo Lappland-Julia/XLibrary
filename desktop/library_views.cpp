@@ -1,6 +1,8 @@
 #include <QApplication>
 #include <QButtonGroup>
+#include <QClipboard>
 #include <QComboBox>
+#include <QDialogButtonBox>
 #include <QDir>
 #include <QEvent>
 #include <QFileInfo>
@@ -10,6 +12,7 @@
 #include <QListWidget>
 #include <QMenu>
 #include <QPainter>
+#include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QResizeEvent>
 #include <QShortcut>
@@ -331,7 +334,33 @@ QWidget *search_bar(const ui_context &context, QWidget *parent) {
 
 QWidget *discovery_status(const ui_context &context, QWidget *parent) {
     auto *service = static_cast<DesktopService *>(context.service);
-    auto *panel = new QFrame(parent);
+    auto *container = new QWidget(parent);
+    auto *container_layout = new QVBoxLayout(container);
+    container_layout->setContentsMargins(0, 0, 0, 0);
+    auto *panel = new QFrame(container);
+    container_layout->addWidget(panel);
+    auto *details = button("Подробности последнего сканирования…", "quiet");
+    container_layout->addWidget(details);
+    const auto update_details = [=] { details->setVisible(!service->discovery_report().isEmpty()); };
+    QObject::connect(service, &DesktopService::discovery_report_changed, container, update_details);
+    update_details();
+    QObject::connect(details, &QPushButton::clicked, container, [=] {
+        QDialog dialog(container);
+        dialog.setWindowTitle("Подробности сканирования");
+        prepare_dialog(&dialog, context, QSize(760, 480));
+        auto *dialog_layout = new QVBoxLayout(&dialog);
+        auto *text = new QPlainTextEdit(service->discovery_report());
+        text->setReadOnly(true);
+        text->setAccessibleName("Отчёт сканирования");
+        dialog_layout->addWidget(text);
+        auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close);
+        auto *copy = buttons->addButton("Копировать всё", QDialogButtonBox::ActionRole);
+        QObject::connect(copy, &QPushButton::clicked, &dialog,
+                         [text] { QApplication::clipboard()->setText(text->toPlainText()); });
+        QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+        dialog_layout->addWidget(buttons);
+        dialog.exec();
+    });
     panel->setObjectName("discovery_panel");
     auto *layout = new QVBoxLayout(panel);
     layout->setContentsMargins(16, 12, 16, 12);
@@ -388,7 +417,7 @@ QWidget *discovery_status(const ui_context &context, QWidget *parent) {
     QObject::connect(service, &DesktopService::discovery_changed, panel, update);
     QObject::connect(service, &DesktopService::discovery_progress_changed, panel, update);
     update();
-    return panel;
+    return container;
 }
 
 QWidget *library(const ui_context &context, QWidget *parent) {

@@ -73,6 +73,7 @@ signals:
     void tag_renamed(const QString &old_name, const QString &new_name);
     void launched(qint64 id, bool success, quint64 scenario);
     void notification(const QString &message);
+    void discovery_report_ready(const QString &report);
 };
 
 DesktopService::DesktopService(QObject *parent, const QString &profile_path, const QString &database_path)
@@ -89,6 +90,10 @@ DesktopService::DesktopService(QObject *parent, const QString &profile_path, con
     connect(&worker_thread, &QThread::finished, worker, &QObject::deleteLater);
     connect(worker, &CatalogWorker::failed, this, &DesktopService::message);
     connect(worker, &CatalogWorker::notification, this, &DesktopService::message);
+    connect(worker, &CatalogWorker::discovery_report_ready, this, [this](const QString &report) {
+        scan_report = report;
+        emit discovery_report_changed();
+    });
     connect(worker, &CatalogWorker::completed, this, &DesktopService::operation_finished);
     connect(this, &DesktopService::operation_finished, this, [this](const QString &operation, bool success) {
         if (operation == "discover") {
@@ -358,7 +363,7 @@ void DesktopService::discover() {
                 },
                 Qt::QueuedConnection);
         };
-    auto *watcher = new QFutureWatcher<std::pair<QVector<app_record>, QStringList>>(this);
+    auto *watcher = new QFutureWatcher<std::pair<QVector<app_record>, QVector<discovery_issue>>>(this);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, report_progress] {
         try {
             if (discovery_cancelled->load()) {
@@ -383,6 +388,10 @@ void DesktopService::discover() {
                 QString message = QString("Добавлено приложений: %1.").arg(count);
                 if (!issues.isEmpty())
                     message += QString(" Диагностических сообщений: %1.").arg(issues.size());
+                QStringList details{message};
+                for (const auto &issue : issues)
+                    details.append(QString("%1: %2").arg(issue.source, issue.reason));
+                emit worker.discovery_report_ready(details.join('\n'));
                 emit worker.notification(message);
             });
         } catch (const std::exception &error) {
@@ -394,7 +403,7 @@ void DesktopService::discover() {
     });
     watcher->setFuture(
         QtConcurrent::run(&discovery_pool, [registry, start_menu, cancelled = discovery_cancelled, report_progress] {
-            QStringList issues;
+            QVector<discovery_issue> issues;
             auto applications = desktop_platform::discover(registry, start_menu, issues, *cancelled, report_progress);
             return std::make_pair(std::move(applications), std::move(issues));
         }));

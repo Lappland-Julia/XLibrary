@@ -989,8 +989,8 @@ app_record desktop_platform::resolve_application(const QString &path) {
     return result;
 }
 
-QVector<app_record> desktop_platform::discover(bool system_applications, bool user_applications, QStringList &issues,
-                                               const std::atomic_bool &cancelled,
+QVector<app_record> desktop_platform::discover(bool system_applications, bool user_applications,
+                                               QVector<discovery_issue> &issues, const std::atomic_bool &cancelled,
                                                const std::function<void(const discovery_progress &)> &progress) {
     if (progress)
         progress({-1, 0, 0, "Подготовка списка приложений XDG…"});
@@ -1001,7 +1001,7 @@ QVector<app_record> desktop_platform::discover(bool system_applications, bool us
         const auto &directory = directories[index];
         const QFileInfo directory_info(directory);
         if (directory_info.isDir() && !directory_info.isReadable()) {
-            issues.append("Нет доступа к папке приложений: " + directory);
+            issues.append(discovery_issue{directory, "Нет доступа к папке приложений."});
             continue;
         }
         QDirIterator files(directory, {"*.desktop"}, QDir::Files, QDirIterator::Subdirectories);
@@ -1011,8 +1011,12 @@ QVector<app_record> desktop_platform::discover(bool system_applications, bool us
             const auto path = files.next();
             auto desktop_id = QDir(directory).relativeFilePath(path);
             desktop_id.replace('/', '-');
-            if (desktop_ids.contains(desktop_id))
+            if (desktop_ids.contains(desktop_id)) {
+                if ((index == 0 && user_applications) || (index > 0 && system_applications))
+                    issues.append(discovery_issue{path, "Запись переопределена источником с более высоким приоритетом.",
+                                                  discovery_issue_kind::duplicate});
                 continue;
+            }
             desktop_ids.insert(desktop_id);
             // Даже отключённый источник сохраняет приоритет пользовательского переопределения.
             if ((index == 0 && user_applications) || (index > 0 && system_applications))
@@ -1028,11 +1032,15 @@ QVector<app_record> desktop_platform::discover(bool system_applications, bool us
                 {static_cast<int>(90.0 * index / entries.size()), index, entries.size(), "Проверка записей .desktop"});
         try {
             const auto entry = read_entry(entries[index]);
-            if (!visible_entry(entry))
+            if (!visible_entry(entry)) {
+                issues.append(discovery_issue{
+                    entry.path, "Запись скрыта, не является приложением или не подходит текущему рабочему столу.",
+                    discovery_issue_kind::skipped});
                 continue;
+            }
             result.append(resolve_application(entry.path));
         } catch (const std::exception &error) {
-            issues.append(QString("%1: %2").arg(QFileInfo(entries[index]).fileName(), QString::fromUtf8(error.what())));
+            issues.append(discovery_issue{entries[index], QString::fromUtf8(error.what())});
         }
     }
     if (progress)

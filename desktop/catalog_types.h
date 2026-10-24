@@ -31,6 +31,14 @@ struct discovery_progress {
     QString stage;
 };
 
+enum class discovery_issue_kind { skipped, duplicate, error };
+
+struct discovery_issue {
+    QString source;
+    QString reason;
+    discovery_issue_kind kind = discovery_issue_kind::error;
+};
+
 struct scenario_step {
     qint64 application_id = 0;
     int delay_ms = 0;
