@@ -2,9 +2,19 @@
 
 #include "localization.h"
 
+QString Localization::ShortcutTranslator::translate(const char *context, const char *source_text, const char *,
+                                                    int) const {
+    // Меняем только подпись Qt; коды клавиш и PortableText в настройках остаются прежними.
+    if (qstrcmp(context, "QShortcut") == 0 && qstrcmp(source_text, "Return") == 0)
+        return QStringLiteral("Enter");
+    return {};
+}
+
 void Localization::apply(const QString &preference) {
+    QCoreApplication::removeTranslator(&shortcut_names);
     QCoreApplication::removeTranslator(&russian);
     QCoreApplication::removeTranslator(&qt_russian);
+    QCoreApplication::installTranslator(&shortcut_names);
     QString language = preference;
     if (language == "system") {
         language = "en";

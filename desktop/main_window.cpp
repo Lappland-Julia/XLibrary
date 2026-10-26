@@ -1,4 +1,5 @@
 #include <QApplication>
+#include <QClipboard>
 #include <QCloseEvent>
 #include <QDir>
 #include <QFileInfo>
@@ -103,6 +104,7 @@ MainWindow::MainWindow(DesktopService &service) : service(service), hotkey(this)
     connect(&service, &DesktopService::discovery_changed, this, &MainWindow::refresh_actions);
     connect(&service, &DesktopService::discovery_progress_changed, this, &MainWindow::refresh_actions);
     connect(&service, &DesktopService::navigation_changed, this, &MainWindow::update_layout);
+    connect(&service, &DesktopService::navigation_changed, this, &MainWindow::refresh_actions);
     connect(&service, &DesktopService::appearance_changed, this, &MainWindow::apply_settings);
     connect(qApp->styleHints(), &QStyleHints::colorSchemeChanged, this, [this] {
         if (this->service.settings.value("appearance/theme").toString() == "system")
@@ -179,7 +181,7 @@ void MainWindow::create_actions() {
     });
     context.actions.value("remove_application")
         ->setToolTip(QCoreApplication::translate(
-            "XLibrary", "Remove the selected application from the library (Delete). Application files will be kept."));
+            "XLibrary", "Remove the selected application from the library. Application files will be kept."));
     add("favorite", QCoreApplication::translate("XLibrary", "Add to favorites"), "favorite", [this] {
         if (const auto *record = service.selected()) {
             auto updated = *record;
@@ -189,6 +191,12 @@ void MainWindow::create_actions() {
     });
     add("open_folder", QCoreApplication::translate("XLibrary", "Open folder"), "folder",
         [this] { service.open_folder(service.selection()); });
+    add("copy_path", QCoreApplication::translate("XLibrary", "Copy path"), "copy", [this] {
+        if (const auto *record = service.selected())
+            QApplication::clipboard()->setText(QDir::toNativeSeparators(record->path));
+    });
+    for (const auto &id : {"launch", "new_instance", "open_folder", "copy_path", "remove_application"})
+        context.actions.value(id)->setAutoRepeat(false);
     add("discover", QCoreApplication::translate("XLibrary", "Find installed applications"), "refresh", [this] {
         if (service.is_discovering())
             service.cancel_discovery();
@@ -217,9 +225,9 @@ void MainWindow::create_actions() {
 
 void MainWindow::refresh_actions() {
     const auto *record = service.selected();
-    for (const auto &id :
-         {"launch", "new_instance", "edit_application", "remove_application", "favorite", "open_folder", "details"})
-        context.actions.value(id)->setEnabled(record != nullptr);
+    for (const auto &id : {"launch", "new_instance", "edit_application", "remove_application", "favorite",
+                           "open_folder", "copy_path", "details"})
+        context.actions.value(id)->setEnabled(record != nullptr && service.section() != "scenarios");
     context.actions.value("add_application")->setEnabled(service.is_ready());
     context.actions.value("add_tag")->setEnabled(service.is_ready());
     context.actions.value("add_scenario")->setEnabled(service.is_ready() && service.model.rowCount() > 0);
@@ -248,10 +256,15 @@ void MainWindow::apply_settings() {
         service.notify(error);
     const QList<QStringList> shortcuts{{"focus_search", "shortcuts/search", "Ctrl+K"},
                                        {"add_application", "shortcuts/add", "Ctrl+N"},
-                                       {"settings", "shortcuts/settings", "Ctrl+,"}};
+                                       {"settings", "shortcuts/settings", "Ctrl+,"},
+                                       {"launch", "shortcuts/launch", "Return"},
+                                       {"new_instance", "shortcuts/new_instance", "Ctrl+Return"},
+                                       {"open_folder", "shortcuts/open_folder", "Alt+Return"},
+                                       {"copy_path", "shortcuts/copy_path", "Ctrl+Shift+C"},
+                                       {"remove_application", "shortcuts/remove", "Delete"}};
     for (const auto &value : shortcuts)
-        context.actions.value(value[0])->setShortcut(QKeySequence::fromString(
-            service.settings.value(value[1], value[2]).toString(), QKeySequence::PortableText));
+        context.actions.value(value[0])->setShortcuts(shortcut_sequences(QKeySequence::fromString(
+            service.settings.value(value[1], value[2]).toString(), QKeySequence::PortableText)));
     desktop_platform::apply_backdrop(this, appearance::is_dark(service.settings),
                                      service.settings.value("appearance/glass", false).toBool());
     refresh_actions();

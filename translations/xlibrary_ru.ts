@@ -4,6 +4,14 @@
 <context>
     <name>XLibrary</name>
     <message>
+        <source>Copy path</source>
+        <translation>Скопировать путь</translation>
+    </message>
+    <message>
+        <source>Launch application</source>
+        <translation>Запустить приложение</translation>
+    </message>
+    <message>
         <source>Scan result</source>
         <translation>Результат сканирования</translation>
     </message>
@@ -811,8 +819,8 @@
     </message>
     <message>
         <location filename="../desktop/library_views.cpp" line="524"/>
-        <source>↑↓  Select     Enter  Launch     Delete  Remove     Ctrl+K  Search</source>
-        <translation>↑↓  Выбор     Enter  Запустить     Delete  Удалить     Ctrl+K  Поиск</translation>
+        <source>↑↓  Select</source>
+        <translation>↑↓  Выбор</translation>
     </message>
     <message>
         <location filename="../desktop/library_views.cpp" line="539"/>
@@ -1196,8 +1204,8 @@ Applications: %1</source>
     </message>
     <message>
         <location filename="../desktop/main_window.cpp" line="213"/>
-        <source>Remove the selected application from the library (Delete). Application files will be kept.</source>
-        <translation>Удалить выбранное приложение из библиотеки (Delete). Файлы приложения сохранятся.</translation>
+        <source>Remove the selected application from the library. Application files will be kept.</source>
+        <translation>Удалить выбранное приложение из библиотеки. Файлы приложения сохранятся.</translation>
     </message>
     <message>
         <location filename="../desktop/main_window.cpp" line="215"/>
@@ -1378,8 +1386,8 @@ Applications: %1</source>
     </message>
     <message>
         <location filename="../desktop/settings_view.cpp" line="129"/>
-        <source>An empty field disables the shortcut. Enter launches the selected application; ↑↓ selects a row. Escape clears the search.</source>
-        <translation>Пустое поле отключает сочетание. Enter запускает выбранное приложение; ↑↓ выбирают строку. Escape очищает поиск.</translation>
+        <source>An empty field disables the shortcut. Application actions use the selected library entry. Text editing keys keep their usual behavior in text fields. ↑↓ selects a row. Escape clears the search and is reserved.</source>
+        <translation>Пустое поле отключает сочетание. Действия выполняются с выбранным приложением в библиотеке. В текстовых полях клавиши редактирования работают как обычно. ↑↓ выбирают строку. Escape очищает поиск и не может быть переназначен.</translation>
     </message>
     <message>
         <location filename="../desktop/settings_view.cpp" line="138"/>
@@ -1554,8 +1562,8 @@ XLibrary — MIT
     </message>
     <message>
         <location filename="../desktop/settings_view.cpp" line="360"/>
-        <source>The same shortcut is assigned to multiple actions.</source>
-        <translation>Одинаковые сочетания назначены нескольким действиям.</translation>
+        <source>The shortcut is already assigned to another action or reserved for search.</source>
+        <translation>Сочетание уже назначено другому действию или зарезервировано для поиска.</translation>
     </message>
     <message>
         <location filename="../desktop/settings_view.cpp" line="418"/>
