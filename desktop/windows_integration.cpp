@@ -14,6 +14,7 @@
 #include <shlobj.h>
 #include <stdexcept>
 
+#include "application_paths.h"
 #include "localization.h"
 #include "platform_integration.h"
 #include "RegistryScan.h"
@@ -199,6 +200,44 @@ void desktop_platform::open_folder(const QString &path) {
 
 bool desktop_platform::open_url(const QUrl &url) {
     return QDesktopServices::openUrl(url);
+}
+
+bool desktop_platform::installed_for_updates() {
+    if (application_paths::portable_mode())
+        return false;
+    const QSettings uninstall("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\"
+                              "{2B7F5CF1-ABF4-4992-899D-B0A17F8DA51E}_is1",
+                              QSettings::Registry64Format);
+    const auto installed_path = QFileInfo(uninstall.value("InstallLocation").toString()).canonicalFilePath();
+    const auto current_path = QFileInfo(QCoreApplication::applicationDirPath()).canonicalFilePath();
+    return !installed_path.isEmpty() && !current_path.isEmpty() &&
+           installed_path.compare(current_path, Qt::CaseInsensitive) == 0;
+}
+
+bool desktop_platform::start_update_installer(const QString &path, QString &error) {
+    if (!installed_for_updates()) {
+        error = QCoreApplication::translate("XLibrary", "This copy of XLibrary was not installed by the installer.");
+        return false;
+    }
+    const auto native_path = QDir::toNativeSeparators(path).toStdWString();
+    const auto parameters =
+        ("/SP- /NORESTART /DIR=\"" + QDir::toNativeSeparators(QCoreApplication::applicationDirPath()) + '"')
+            .toStdWString();
+    SHELLEXECUTEINFOW execution{};
+    execution.cbSize = sizeof(execution);
+    execution.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI;
+    execution.lpVerb = L"open";
+    execution.lpFile = native_path.c_str();
+    execution.lpParameters = parameters.c_str();
+    execution.nShow = SW_SHOWNORMAL;
+    if (!ShellExecuteExW(&execution)) {
+        error = QCoreApplication::translate("XLibrary", "Could not start the installer (Windows error %1).")
+                    .arg(GetLastError());
+        return false;
+    }
+    if (execution.hProcess)
+        CloseHandle(execution.hProcess);
+    return true;
 }
 
 QImage desktop_platform::application_icon(const QString &path) {

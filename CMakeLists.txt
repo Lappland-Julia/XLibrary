@@ -147,6 +147,7 @@ qt_add_executable(XLibrary WIN32
         desktop/editors.h desktop/editors.cpp
         desktop/library_views.h desktop/library_views.cpp
         desktop/settings_view.h desktop/settings_view.cpp
+        desktop/update_checker.h desktop/update_checker.cpp
         desktop/main_window.h desktop/main_window.cpp
 )
 set_target_properties(XLibrary PROPERTIES AUTOMOC ON)

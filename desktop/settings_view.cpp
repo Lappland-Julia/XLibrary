@@ -5,6 +5,7 @@
 #include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QKeySequenceEdit>
+#include <QProgressBar>
 #include <QStackedWidget>
 #include <QUrl>
 
@@ -14,6 +15,7 @@
 #include "selection_button.h"
 #include "settings_view.h"
 #include "ui_helpers.h"
+#include "update_checker.h"
 
 namespace {
 using namespace ui_helpers;
@@ -255,6 +257,97 @@ QWidget *about(const ui_context &context, QWidget *) {
     auto *issues = button(QCoreApplication::translate("XLibrary", "Report an issue ↗"));
     card_layout->addWidget(github);
     card_layout->addWidget(issues);
+    auto *updates = new UpdateChecker(widget);
+    auto *check_update = button(QCoreApplication::translate("XLibrary", "Check for updates"));
+    auto *update_status = label(
+        QCoreApplication::translate("XLibrary", "Checks GitHub Releases on request, including pre-releases."), "muted");
+    auto *update_progress = new QProgressBar;
+    update_progress->setAccessibleName(QCoreApplication::translate("XLibrary", "Update download progress"));
+    update_progress->hide();
+    auto *cancel_update = button(QCoreApplication::translate("XLibrary", "Cancel"));
+    cancel_update->hide();
+    auto *release_button = button(QCoreApplication::translate("XLibrary", "Open release on GitHub ↗"));
+    release_button->hide();
+    card_layout->addWidget(check_update);
+    card_layout->addWidget(update_status);
+    card_layout->addWidget(update_progress);
+    card_layout->addWidget(cancel_update);
+    card_layout->addWidget(release_button);
+    auto open_release = [=] {
+        if (!desktop_platform::open_url(updates->available_release_url()))
+            update_status->setText(QCoreApplication::translate("XLibrary", "Could not open the release in a browser."));
+    };
+    QObject::connect(release_button, &QPushButton::clicked, widget, open_release);
+    QObject::connect(updates, &UpdateChecker::busy_changed, widget, [=] {
+        check_update->setEnabled(!updates->is_busy());
+        cancel_update->setVisible(updates->is_busy());
+        release_button->setEnabled(!updates->is_busy());
+        if (!updates->is_busy())
+            update_progress->hide();
+    });
+    QObject::connect(check_update, &QPushButton::clicked, widget, [=] {
+        release_button->hide();
+        update_status->setText(QCoreApplication::translate("XLibrary", "Checking for updates…"));
+        update_progress->setRange(0, 0);
+        update_progress->show();
+        updates->check();
+    });
+    QObject::connect(cancel_update, &QPushButton::clicked, widget, [=] {
+        updates->cancel();
+        update_status->setText(QCoreApplication::translate("XLibrary", "Update cancelled."));
+    });
+    QObject::connect(updates, &UpdateChecker::failed, widget, [=](const QString &message) {
+        update_progress->hide();
+        update_status->setText(message);
+    });
+    QObject::connect(updates, &UpdateChecker::up_to_date, widget, [=](bool releases_exist) {
+        update_status->setText(
+            releases_exist
+                ? QCoreApplication::translate("XLibrary", "You are using the latest available version.")
+                : QCoreApplication::translate("XLibrary", "No releases with a supported version were found."));
+    });
+    QObject::connect(updates, &UpdateChecker::download_progress, widget, [=](qint64 received, qint64 total) {
+        update_progress->setRange(0, 100);
+        update_progress->setValue(static_cast<int>(received * 100 / total));
+        update_progress->show();
+        update_status->setText(QCoreApplication::translate("XLibrary", "Downloading update… %1 / %2 MiB")
+                                   .arg(received / (1024.0 * 1024.0), 0, 'f', 1)
+                                   .arg(total / (1024.0 * 1024.0), 0, 'f', 1));
+    });
+    QObject::connect(updates, &UpdateChecker::update_available, widget, [=] {
+        release_button->show();
+        update_status->setText(
+            QCoreApplication::translate("XLibrary", "New version available: %1").arg(updates->available_version()));
+        if (updates->can_install()) {
+            if (confirm(widget, QCoreApplication::translate("XLibrary", "XLibrary update"),
+                        QCoreApplication::translate(
+                            "XLibrary", "A new version is available: %1 (current: %2). Update now?\n\n"
+                                        "XLibrary will download and verify the installer, then close. "
+                                        "Complete the update in the installation wizard. Your library and settings "
+                                        "will be kept. Save any unsaved edits before continuing.")
+                            .arg(updates->available_version(), QCoreApplication::applicationVersion()),
+                        QCoreApplication::translate("XLibrary", "Update now")))
+                updates->download();
+        } else if (confirm(widget, QCoreApplication::translate("XLibrary", "XLibrary update"),
+                           QCoreApplication::translate(
+                               "XLibrary",
+                               "A new version is available: %1 (current: %2). Open the release on GitHub?\n\n"
+                               "Automatic installation is unavailable for this copy or release. "
+                               "Follow the release instructions and keep your existing profile.")
+                               .arg(updates->available_version(), QCoreApplication::applicationVersion()),
+                           QCoreApplication::translate("XLibrary", "Open release"))) {
+            open_release();
+        }
+    });
+    QObject::connect(updates, &UpdateChecker::installer_ready, widget, [=] {
+        QString error;
+        if (updates->launch_installer(error)) {
+            context.actions.value("quit")->trigger();
+        } else {
+            updates->cancel();
+            update_status->setText(error);
+        }
+    });
     QObject::connect(github, &QPushButton::clicked, widget,
                      [] { desktop_platform::open_url(QUrl("https://github.com/Lappland-Julia/XLibrary")); });
     QObject::connect(issues, &QPushButton::clicked, widget,

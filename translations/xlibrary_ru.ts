@@ -1686,5 +1686,145 @@ XLibrary — MIT
         <source>Language changes take effect after restarting XLibrary.</source>
         <translation>Изменение языка применяется после перезапуска XLibrary.</translation>
     </message>
+    <message>
+        <source>Check for updates</source>
+        <translation>Проверить наличие обновления</translation>
+    </message>
+    <message>
+        <source>Checks GitHub Releases on request, including pre-releases.</source>
+        <translation>Проверяет выпуски на GitHub по запросу, включая предварительные версии.</translation>
+    </message>
+    <message>
+        <source>Update download progress</source>
+        <translation>Ход загрузки обновления</translation>
+    </message>
+    <message>
+        <source>Open release on GitHub ↗</source>
+        <translation>Открыть выпуск на GitHub ↗</translation>
+    </message>
+    <message>
+        <source>Could not open the release in a browser.</source>
+        <translation>Не удалось открыть выпуск в браузере.</translation>
+    </message>
+    <message>
+        <source>Checking for updates…</source>
+        <translation>Проверка обновлений…</translation>
+    </message>
+    <message>
+        <source>Update cancelled.</source>
+        <translation>Обновление отменено.</translation>
+    </message>
+    <message>
+        <source>You are using the latest available version.</source>
+        <translation>У вас установлена актуальная версия.</translation>
+    </message>
+    <message>
+        <source>No releases with a supported version were found.</source>
+        <translation>Не найдены выпуски с поддерживаемым форматом версии.</translation>
+    </message>
+    <message>
+        <source>Downloading update… %1 / %2 MiB</source>
+        <translation>Загрузка обновления… %1 / %2 МиБ</translation>
+    </message>
+    <message>
+        <source>New version available: %1</source>
+        <translation>Доступна новая версия: %1</translation>
+    </message>
+    <message>
+        <source>XLibrary update</source>
+        <translation>Обновление XLibrary</translation>
+    </message>
+    <message>
+        <source>A new version is available: %1 (current: %2). Update now?
+
+XLibrary will download and verify the installer, then close. Complete the update in the installation wizard. Your library and settings will be kept. Save any unsaved edits before continuing.</source>
+        <translation>Доступна новая версия: %1 (текущая: %2). Хотите обновиться сейчас?
+
+XLibrary скачает и проверит установщик, затем закроется. Завершите обновление в мастере установки. Библиотека и настройки сохранятся. Перед продолжением сохраните несохранённые изменения.</translation>
+    </message>
+    <message>
+        <source>Update now</source>
+        <translation>Обновить сейчас</translation>
+    </message>
+    <message>
+        <source>A new version is available: %1 (current: %2). Open the release on GitHub?
+
+Automatic installation is unavailable for this copy or release. Follow the release instructions and keep your existing profile.</source>
+        <translation>Доступна новая версия: %1 (текущая: %2). Открыть выпуск на GitHub?
+
+Автоматическая установка недоступна для этой копии или выпуска. Следуйте инструкциям выпуска и сохраните существующий профиль.</translation>
+    </message>
+    <message>
+        <source>Open release</source>
+        <translation>Открыть выпуск</translation>
+    </message>
+    <message>
+        <source>The update request timed out. Please try again.</source>
+        <translation>Истекло время ожидания обновления. Попробуйте ещё раз.</translation>
+    </message>
+    <message>
+        <source>The current application version is invalid.</source>
+        <translation>Некорректная текущая версия приложения.</translation>
+    </message>
+    <message>
+        <source>GitHub returned an unexpected redirect.</source>
+        <translation>GitHub вернул неожиданное перенаправление.</translation>
+    </message>
+    <message>
+        <source>The installer size does not match the GitHub release.</source>
+        <translation>Размер установщика не совпадает с данными выпуска GitHub.</translation>
+    </message>
+    <message>
+        <source>Could not write the downloaded installer. Check free disk space and permissions.</source>
+        <translation>Не удалось записать установщик. Проверьте свободное место на диске и права доступа.</translation>
+    </message>
+    <message>
+        <source>The GitHub response is too large.</source>
+        <translation>Ответ GitHub превышает допустимый размер.</translation>
+    </message>
+    <message>
+        <source>GitHub has limited update requests. Please try again later.</source>
+        <translation>GitHub ограничил запросы обновлений. Попробуйте позже.</translation>
+    </message>
+    <message>
+        <source>Could not retrieve the update from GitHub. Check your internet connection and try again.</source>
+        <translation>Не удалось получить обновление с GitHub. Проверьте подключение к интернету и повторите попытку.</translation>
+    </message>
+    <message>
+        <source>Installer verification failed. The file was removed; please try again.</source>
+        <translation>Установщик не прошёл проверку. Файл удалён; повторите попытку.</translation>
+    </message>
+    <message>
+        <source>GitHub returned an invalid release list.</source>
+        <translation>GitHub вернул некорректный список выпусков.</translation>
+    </message>
+    <message>
+        <source>GitHub returned an invalid release link.</source>
+        <translation>GitHub вернул некорректную ссылку на выпуск.</translation>
+    </message>
+    <message>
+        <source>The release list is too long. Open GitHub to check for updates.</source>
+        <translation>Список выпусков слишком длинный. Проверьте обновления на сайте GitHub.</translation>
+    </message>
+    <message>
+        <source>Could not create a temporary folder for the update.</source>
+        <translation>Не удалось создать временную папку для обновления.</translation>
+    </message>
+    <message>
+        <source>This installation can no longer be updated automatically. Please open the release on GitHub.</source>
+        <translation>Автоматическое обновление этой установки больше недоступно. Откройте выпуск на GitHub.</translation>
+    </message>
+    <message>
+        <source>This copy of XLibrary was not installed by the installer.</source>
+        <translation>Эта копия XLibrary не была установлена установщиком.</translation>
+    </message>
+    <message>
+        <source>Could not start the installer (Windows error %1).</source>
+        <translation>Не удалось запустить установщик (ошибка Windows %1).</translation>
+    </message>
+    <message>
+        <source>Use the GitHub release to update this installation.</source>
+        <translation>Для обновления этой установки используйте выпуск на GitHub.</translation>
+    </message>
 </context>
 </TS>
