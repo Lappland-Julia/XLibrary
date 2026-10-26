@@ -179,7 +179,7 @@ void UpdateChecker::request_releases() {
 }
 
 void UpdateChecker::read_response() {
-    if (!reply)
+    if (!reply || !reply->isOpen())
         return;
     // Тело промежуточного redirect не является частью установщика.
     if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() != 200) {
