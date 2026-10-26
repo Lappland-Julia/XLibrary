@@ -109,7 +109,12 @@ QWidget *hotkeys(const ui_context &context, QWidget *) {
          desktop_platform::default_global_shortcut()},
         {"shortcuts/search", QCoreApplication::translate("XLibrary", "Search the library"), "Ctrl+K"},
         {"shortcuts/add", QCoreApplication::translate("XLibrary", "Add application"), "Ctrl+N"},
-        {"shortcuts/settings", QCoreApplication::translate("XLibrary", "Open settings"), "Ctrl+,"}};
+        {"shortcuts/settings", QCoreApplication::translate("XLibrary", "Open settings"), "Ctrl+,"},
+        {"shortcuts/launch", QCoreApplication::translate("XLibrary", "Launch application"), "Return"},
+        {"shortcuts/new_instance", QCoreApplication::translate("XLibrary", "New instance"), "Ctrl+Return"},
+        {"shortcuts/open_folder", QCoreApplication::translate("XLibrary", "Open application folder"), "Alt+Return"},
+        {"shortcuts/copy_path", QCoreApplication::translate("XLibrary", "Copy path"), "Ctrl+Shift+C"},
+        {"shortcuts/remove", QCoreApplication::translate("XLibrary", "Remove from library"), "Delete"}};
     for (const auto &value : values) {
         auto *control = new QKeySequenceEdit(QKeySequence::fromString(
             context.settings->value(value[0], value[2]).toString(), QKeySequence::PortableText));
@@ -126,8 +131,10 @@ QWidget *hotkeys(const ui_context &context, QWidget *) {
               "muted"));
 #endif
     widget->layout()->addWidget(label(
-        QCoreApplication::translate("XLibrary", "An empty field disables the shortcut. Enter launches the selected "
-                                                "application; ↑↓ selects a row. Escape clears the search."),
+        QCoreApplication::translate("XLibrary",
+                                    "An empty field disables the shortcut. Application actions use the "
+                                    "selected library entry. Text editing keys keep their usual behavior "
+                                    "in text fields. ↑↓ selects a row. Escape clears the search and is reserved."),
         "muted"));
     static_cast<QVBoxLayout *>(widget->layout())->addStretch();
     return widget;
@@ -344,7 +351,7 @@ QDialog *settings_dialog(const ui_context &context, QWidget *parent) {
     QObject::connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
     QObject::connect(buttons, &QDialogButtonBox::accepted, dialog, [=] {
         QVariantMap values;
-        QSet<QString> sequences;
+        QSet<QString> sequences{QKeySequence(Qt::Key_Escape).toString(QKeySequence::PortableText)};
         for (auto *control : dialog->findChildren<QWidget *>()) {
             const auto key = control->property("setting_key").toString();
             if (key.isEmpty())
@@ -355,15 +362,18 @@ QDialog *settings_dialog(const ui_context &context, QWidget *parent) {
                 values.insert(key, combo->currentData());
             if (auto *edit = qobject_cast<QKeySequenceEdit *>(control)) {
                 const auto value = edit->keySequence().toString(QKeySequence::PortableText);
-                if (!value.isEmpty() && sequences.contains(value)) {
-                    show_error(
-                        QCoreApplication::translate("XLibrary", "The same shortcut is assigned to multiple actions."));
-                    categories->button(2)->click();
-                    edit->setFocus();
-                    return;
+                const auto aliases = shortcut_sequences(edit->keySequence());
+                for (const auto &sequence : aliases) {
+                    if (sequences.contains(sequence.toString(QKeySequence::PortableText))) {
+                        show_error(QCoreApplication::translate(
+                            "XLibrary", "The shortcut is already assigned to another action or reserved for search."));
+                        categories->button(2)->click();
+                        edit->setFocus();
+                        return;
+                    }
                 }
-                if (!value.isEmpty())
-                    sequences.insert(value);
+                for (const auto &sequence : aliases)
+                    sequences.insert(sequence.toString(QKeySequence::PortableText));
                 values.insert(key, value);
             }
         }

@@ -54,6 +54,9 @@ QIcon appearance::icon(const QString &name, const QColor &color) {
         path.lineTo(3, 4);
         path.closeSubpath();
         painter.drawPath(path);
+    } else if (name == "copy") {
+        painter.drawRoundedRect(QRectF(8, 8, 12, 13), 2, 2);
+        painter.drawPolyline(QPolygonF{QPointF(5, 16), QPointF(3, 16), QPointF(3, 3), QPointF(15, 3), QPointF(15, 5)});
     } else if (name == "settings") {
         painter.drawEllipse(QRectF(5, 5, 14, 14));
         painter.drawEllipse(QRectF(9, 9, 6, 6));

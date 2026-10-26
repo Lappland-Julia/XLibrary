@@ -15,7 +15,6 @@
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QResizeEvent>
-#include <QShortcut>
 #include <QSignalBlocker>
 #include <QStackedLayout>
 #include <QStyledItemDelegate>
@@ -35,8 +34,28 @@ using namespace ui_helpers;
 class SearchInput : public QLineEdit {
 public:
     std::function<void(int)> move_selection;
+    std::function<void()> synchronize_search;
+    QList<QAction *> application_actions;
 
 protected:
+    bool event(QEvent *event) override {
+        const bool handled = QLineEdit::event(event);
+        if (event->type() == QEvent::ShortcutOverride && !event->isAccepted() && synchronize_search) {
+            const auto *key_event = static_cast<QKeyEvent *>(event);
+            const QKeySequence sequence(key_event->keyCombination());
+            const QKeySequence without_keypad(
+                QKeyCombination(key_event->modifiers() & ~Qt::KeypadModifier, key_event->keyCombination().key()));
+            for (auto *action : application_actions) {
+                if (action->shortcuts().contains(sequence) || action->shortcuts().contains(without_keypad)) {
+                    // Применяем ещё не обработанный запрос до выбора действия и проверки его доступности.
+                    synchronize_search();
+                    break;
+                }
+            }
+        }
+        return handled;
+    }
+
     void keyPressEvent(QKeyEvent *event) override {
         if (move_selection && (event->key() == Qt::Key_Down || event->key() == Qt::Key_Up)) {
             move_selection(event->key() == Qt::Key_Down ? 1 : -1);
@@ -305,19 +324,16 @@ QWidget *search_bar(const ui_context &context, QWidget *parent) {
         search->setFocus();
         search->selectAll();
     });
-    QObject::connect(search, &QLineEdit::returnPressed, widget, [=] {
+    search->synchronize_search = [=] {
         timer->stop();
         if (service->section() == "scenarios")
             service->navigate("library");
         service->filter.set_query(search->text());
-        if (service->selection())
-            service->launch(service->selection());
-    });
+    };
+    for (const auto &id : {"launch", "new_instance", "open_folder", "copy_path", "remove_application"})
+        search->application_actions.append(context.actions.value(id));
     search->move_selection = [=](int offset) {
-        timer->stop();
-        if (service->section() == "scenarios")
-            service->navigate("library");
-        service->filter.set_query(search->text());
+        search->synchronize_search();
         if (auto *view = context.window->findChild<QTreeView *>("application_list")) {
             const auto count = service->filter.rowCount();
             if (!count)
@@ -521,11 +537,6 @@ QWidget *library(const ui_context &context, QWidget *parent) {
         service->settings.setValue("library/sort", mode);
         service->settings.setValue("library/sort_order", static_cast<int>(direction));
     });
-    auto *delete_shortcut = new QShortcut(QKeySequence(Qt::Key_Delete), view);
-    delete_shortcut->setContext(Qt::WidgetWithChildrenShortcut);
-    delete_shortcut->setAutoRepeat(false);
-    QObject::connect(delete_shortcut, &QShortcut::activated, context.actions.value("remove_application"),
-                     &QAction::trigger);
     view->setContextMenuPolicy(Qt::CustomContextMenu);
     stack->addWidget(view);
     auto *empty = new QWidget;
@@ -549,10 +560,20 @@ QWidget *library(const ui_context &context, QWidget *parent) {
     auto *library_transition = new PageTransition(stack_widget);
     root->addWidget(library_transition, 1);
     auto *footer = new QHBoxLayout;
-    footer->addWidget(label(QCoreApplication::translate(
-                                "XLibrary", "↑↓  Select     Enter  Launch     Delete  Remove     Ctrl+K  Search"),
-                            "caption"),
-                      1);
+    auto *shortcut_hint = label({}, "caption");
+    const auto update_shortcut_hint = [=] {
+        QStringList hints{QCoreApplication::translate("XLibrary", "↑↓  Select")};
+        for (const auto &id : {"launch", "remove_application", "focus_search"}) {
+            const auto *action = context.actions.value(id);
+            if (!action->shortcut().isEmpty())
+                hints.append(action->shortcut().toString(QKeySequence::NativeText) + "  " + action->text());
+        }
+        shortcut_hint->setText(hints.join("     "));
+    };
+    for (const auto &id : {"launch", "remove_application", "focus_search"})
+        QObject::connect(context.actions.value(id), &QAction::changed, shortcut_hint, update_shortcut_hint);
+    update_shortcut_hint();
+    footer->addWidget(shortcut_hint, 1);
     auto *details = action_button(context.actions.value("details"), true);
     footer->addWidget(details);
     root->addLayout(footer);
@@ -605,7 +626,7 @@ QWidget *library(const ui_context &context, QWidget *parent) {
                          if (index.isValid())
                              service->select(index.data(LibraryModel::id_role).toLongLong());
                      });
-    QObject::connect(view, &QTreeView::activated, widget, [=](const QModelIndex &index) {
+    QObject::connect(view, &QTreeView::doubleClicked, widget, [=](const QModelIndex &index) {
         service->launch(index.data(LibraryModel::id_role).toLongLong());
     });
     QObject::connect(view, &QTreeView::customContextMenuRequested, widget, [=](const QPoint &position) {
@@ -730,7 +751,7 @@ QWidget *details(const ui_context &context, QWidget *parent) {
 
 QWidget *application_menu(const ui_context &context, QWidget *parent) {
     auto *menu = new QMenu(parent);
-    for (const auto &id : {"launch", "new_instance", "open_folder", "favorite", "edit_application"})
+    for (const auto &id : {"launch", "new_instance", "open_folder", "copy_path", "favorite", "edit_application"})
         menu->addAction(context.actions.value(id));
     menu->addSeparator();
     menu->addAction(context.actions.value("remove_application"));

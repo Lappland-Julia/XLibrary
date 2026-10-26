@@ -20,6 +20,20 @@
 #include "ui_registry.h"
 
 namespace ui_helpers {
+inline QList<QKeySequence> shortcut_sequences(const QKeySequence &sequence) {
+    if (sequence.isEmpty())
+        return {};
+    QList<QKeySequence> result{sequence};
+    if (sequence.count() == 1) {
+        const auto combination = sequence[0];
+        if (combination.key() == Qt::Key_Return || combination.key() == Qt::Key_Enter)
+            result.append(
+                QKeySequence(QKeyCombination(combination.keyboardModifiers(),
+                                             combination.key() == Qt::Key_Return ? Qt::Key_Enter : Qt::Key_Return)));
+    }
+    return result;
+}
+
 class AnimatedReveal : public QWidget {
 protected:
     QWidget *contents;

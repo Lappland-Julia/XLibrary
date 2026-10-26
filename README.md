@@ -79,6 +79,18 @@ Search by app name or executable filename, then narrow the results with your own
 
 Press <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>Space</kbd> to bring up the library, or <kbd>Ctrl</kbd> + <kbd>K</kbd> to focus search. Both shortcuts can be changed in settings. On Wayland, assign the global shortcut in your desktop settings to the `XLibrary` command.
 
+For the selected application:
+
+| Shortcut | Action |
+| --- | --- |
+| <kbd>Enter</kbd> | Launch or switch to the running application, according to the launch settings |
+| <kbd>Ctrl</kbd> + <kbd>Enter</kbd> | Launch a new instance |
+| <kbd>Alt</kbd> + <kbd>Enter</kbd> | Open the application folder |
+| <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>C</kbd> | Copy the application path |
+| <kbd>Delete</kbd> | Remove the entry from the library after confirmation; application files are kept |
+
+Change or clear these bindings in Settings → Keyboard shortcuts. Both main and numeric keypad Enter are supported. Text editing keys keep their usual behavior in text fields. Use ↑/↓ in search to select an application; Escape clears the search and cannot be reassigned. Duplicate shortcuts are rejected when saving settings.
+
 ## Development
 
 XLibrary is built with **C++23**, **Qt 6 Widgets**, and **SQLite**. It targets **Windows 10/11 and Linux**. The interface supports English and Russian. It follows the system's preferred supported language by default and falls back to English. Choose a language in Settings → General and restart XLibrary to apply it. The application translation is embedded in the executable.
