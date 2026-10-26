@@ -987,6 +987,15 @@ bool desktop_platform::open_url(const QUrl &url) {
     return process.startDetached();
 }
 
+bool desktop_platform::installed_for_updates() {
+    return false;
+}
+
+bool desktop_platform::start_update_installer(const QString &, QString &error) {
+    error = QCoreApplication::translate("XLibrary", "Use the GitHub release to update this installation.");
+    return false;
+}
+
 QImage desktop_platform::application_icon(const QString &path) {
     QString icon_name;
     if (QFileInfo(path).suffix() == "desktop") {

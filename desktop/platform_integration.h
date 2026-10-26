@@ -26,6 +26,8 @@ bool activate_window(const QString &path);
 void launch_application(const app_record &record);
 void open_folder(const QString &path);
 bool open_url(const QUrl &url);
+bool installed_for_updates();
+bool start_update_installer(const QString &path, QString &error);
 QImage application_icon(const QString &path);
 app_record resolve_application(const QString &path);
 QVector<app_record> discover(bool registry, bool start_menu, QVector<discovery_issue> &issues,

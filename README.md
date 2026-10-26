@@ -65,6 +65,23 @@ starts, cancellation is unavailable. JSON import and discovery never launch appl
 JSON export is an application catalog transfer, not a complete profile backup: scenarios,
 unused tags, settings, and launch history are not included.
 
+## Updates
+
+Open **Settings → About → Check for updates** to query this project's GitHub Releases.
+Checks run only on request and include published pre-releases. Versions are compared using
+Semantic Versioning; drafts and tags without a supported version are ignored.
+
+On Windows x64, an installer-managed copy can download the matching MinGW or MSVC installer
+after confirmation. XLibrary verifies its size and GitHub-provided SHA-256 before starting
+the installation wizard in the existing installation directory, then exits normally. The
+wizard completes the update and offers to reopen XLibrary; the library and settings stay
+in the existing profile. Downloads can be cancelled; closing Settings cancels an active request.
+
+Portable copies, Linux installations, and releases without a matching installer and SHA-256
+open the release in your browser after confirmation. Follow its update instructions and keep
+your portable data folder; on Linux, use the appropriate package or AppImage workflow.
+No downloads or installations happen in the background.
+
 ## Search
 
 Search by app name or executable filename, then narrow the results with your own tags.
