@@ -67,6 +67,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     find_package(X11)
 endif()
 
+include(cmake/qtkeychain.cmake)
+
 FetchContent_Declare(sqlite3
         URL
         https://sqlite.org/2026/sqlite-amalgamation-3540000.zip
@@ -147,6 +149,7 @@ qt_add_executable(XLibrary WIN32
         desktop/editors.h desktop/editors.cpp
         desktop/library_views.h desktop/library_views.cpp
         desktop/settings_view.h desktop/settings_view.cpp
+        desktop/github_token_store.h desktop/github_token_store.cpp
         desktop/update_checker.h desktop/update_checker.cpp
         desktop/main_window.h desktop/main_window.cpp
 )
@@ -182,7 +185,7 @@ qt_add_resources(XLibrary application_images
 )
 target_compile_definitions(XLibrary PRIVATE XLIBRARY_VERSION="${PROJECT_VERSION}")
 
-target_link_libraries(XLibrary PRIVATE xlibrary_core Qt6::Widgets Qt6::Concurrent Qt6::Network)
+target_link_libraries(XLibrary PRIVATE xlibrary_core Qt6::Widgets Qt6::Concurrent Qt6::Network qt6keychain)
 
 if(WIN32)
     target_link_libraries(XLibrary PRIVATE ole32 uuid dwmapi)

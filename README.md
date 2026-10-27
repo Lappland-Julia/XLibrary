@@ -68,6 +68,17 @@ unused tags, settings, and launch history are not included.
 ## Updates
 
 Open **Settings → About → Check for updates** to query this project's GitHub Releases.
+You can optionally enter your own GitHub Personal Access Token in the same section.
+For this public repository, a token without additional permissions is sufficient.
+Click **Save token** to store it in Windows Credential Manager or the Linux secret store
+(Secret Service/KWallet); **Delete token** restores unauthenticated checks. These two
+buttons take effect immediately, independently of the settings dialog's Save/Cancel buttons.
+The token is sent only to `api.github.com`, including subsequent release-list pages, and
+is never attached to installer downloads. It is not written to `settings.ini` or catalog exports.
+If the secret store is unavailable or locked, XLibrary reports the error and never falls back
+to plaintext storage. A saved token belongs to the OS user and local profile path; enter it
+again after moving a portable profile. Without a saved token, checks work as before.
+
 Checks run only on request and include published pre-releases. Versions are compared using
 Semantic Versioning; drafts and tags without a supported version are ignored.
 

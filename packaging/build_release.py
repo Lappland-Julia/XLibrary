@@ -78,9 +78,11 @@ def build_appimage(repository, build, stage, cache, config, info):
     environment["EXTRA_PLATFORM_PLUGINS"] = ";".join(extra_platforms)
     cpp_libraries = [Path(capture([config["cxx_compiler"], f"-print-file-name={name}"]))
                      for name in ("libstdc++.so.6", "libgcc_s.so.1")]
-    if any(not path.is_absolute() or not path.is_file() for path in cpp_libraries):
-        raise RuntimeError("Cannot locate the selected compiler's C++ runtime libraries")
-    runtime_arguments = [value for library in cpp_libraries for value in ("--library", library)]
+    # QtKeychain загружает libsecret динамически, поэтому linuxdeploy нужна явная библиотека.
+    runtime_libraries = [*cpp_libraries, Path(config["secret_library"])]
+    if any(not path.is_absolute() or not path.is_file() for path in runtime_libraries):
+        raise RuntimeError("Cannot locate the C++ runtime libraries or libsecret")
+    runtime_arguments = [value for library in runtime_libraries for value in ("--library", library)]
     run([tools["linuxdeploy-x86_64.AppImage"], "--appdir", appdir, "--plugin", "qt",
          "--custom-apprun", repository / "packaging/AppRun", *runtime_arguments], env=environment)
     # Qt Wayland загружает shell/graphics integrations через dlopen: одного platform plugin недостаточно.

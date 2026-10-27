@@ -19,6 +19,7 @@ private:
     QTimer deadline;
     QNetworkReply *reply = nullptr;
     QByteArray response;
+    QByteArray authorization_token;
     QJsonObject latest_release;
     int release_page = 0;
     bool busy = false;
@@ -45,7 +46,7 @@ public:
     QString available_version() const { return release_tag; }
     QUrl available_release_url() const { return release_url; }
     bool can_install() const;
-    void check();
+    void check(const QString &token = {});
     void download();
     void cancel();
     bool launch_installer(QString &error);

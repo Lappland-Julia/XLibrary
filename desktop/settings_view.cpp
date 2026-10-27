@@ -5,11 +5,14 @@
 #include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QKeySequenceEdit>
+#include <QLineEdit>
 #include <QProgressBar>
+#include <QRegularExpressionValidator>
 #include <QStackedWidget>
 #include <QUrl>
 
 #include "desktop_service.h"
+#include "github_token_store.h"
 #include "localization.h"
 #include "platform_integration.h"
 #include "selection_button.h"
@@ -258,6 +261,47 @@ QWidget *about(const ui_context &context, QWidget *) {
     card_layout->addWidget(github);
     card_layout->addWidget(issues);
     auto *updates = new UpdateChecker(widget);
+    auto *tokens = new GithubTokenStore(*context.settings, context.service);
+    // libsecret завершает запрос асинхронно; закрытие окна не должно уничтожать активный job.
+    QObject::connect(widget, &QObject::destroyed, tokens, [tokens] {
+        if (!tokens->is_busy()) {
+            tokens->deleteLater();
+        } else {
+            QObject::connect(tokens, &GithubTokenStore::busy_changed, tokens, [tokens] {
+                if (!tokens->is_busy())
+                    tokens->deleteLater();
+            });
+        }
+    });
+    auto *token = new QLineEdit;
+    token->setEchoMode(QLineEdit::Password);
+    token->setMaxLength(1024);
+    token->setValidator(new QRegularExpressionValidator(QRegularExpression("[A-Za-z0-9_]*"), token));
+    token->setPlaceholderText(QCoreApplication::translate("XLibrary", "Paste a GitHub Personal Access Token"));
+    field(card_layout, QCoreApplication::translate("XLibrary", "Personal GitHub token (optional)"), token);
+    card_layout->addWidget(label(
+        QCoreApplication::translate("XLibrary", "For public releases, use a token without additional permissions. "
+                                                "It is sent only to the GitHub API."),
+        "muted"));
+    auto *token_buttons = new QHBoxLayout;
+    auto *save_token = button(QCoreApplication::translate("XLibrary", "Save token"));
+    auto *remove_token = button(QCoreApplication::translate("XLibrary", "Delete token"));
+    // Enter в поле токена не должен сохранять его вместо обычного сохранения настроек.
+    save_token->setAutoDefault(false);
+    remove_token->setAutoDefault(false);
+    token_buttons->addWidget(save_token);
+    token_buttons->addWidget(remove_token);
+    card_layout->addLayout(token_buttons);
+    auto *token_status = label(
+        tokens->has_token()
+            ? QCoreApplication::translate("XLibrary", "A personal token is saved in the system secret store.")
+            : QCoreApplication::translate("XLibrary", "No token saved. Update checks use unauthenticated requests."),
+        "muted");
+    card_layout->addWidget(token_status);
+    card_layout->addWidget(label(
+        QCoreApplication::translate("XLibrary", "Save token and Delete token take effect immediately. "
+                                                "The token is not stored in the settings file or library export."),
+        "muted"));
     auto *check_update = button(QCoreApplication::translate("XLibrary", "Check for updates"));
     auto *update_status = label(
         QCoreApplication::translate("XLibrary", "Checks GitHub Releases on request, including pre-releases."), "muted");
@@ -278,8 +322,40 @@ QWidget *about(const ui_context &context, QWidget *) {
             update_status->setText(QCoreApplication::translate("XLibrary", "Could not open the release in a browser."));
     };
     QObject::connect(release_button, &QPushButton::clicked, widget, open_release);
+    auto refresh_token_controls = [=] {
+        const bool idle = !updates->is_busy() && !tokens->is_busy();
+        token->setEnabled(idle);
+        save_token->setEnabled(idle && !token->text().isEmpty() && token->hasAcceptableInput());
+        remove_token->setEnabled(idle && tokens->has_token());
+        check_update->setEnabled(idle);
+    };
+    QObject::connect(token, &QLineEdit::textChanged, widget, refresh_token_controls);
+    QObject::connect(tokens, &GithubTokenStore::busy_changed, widget, refresh_token_controls);
+    QObject::connect(updates, &UpdateChecker::busy_changed, widget, refresh_token_controls);
+    refresh_token_controls();
+    QObject::connect(save_token, &QPushButton::clicked, widget, [=] {
+        token_status->setText(QCoreApplication::translate("XLibrary", "Saving token…"));
+        tokens->save(token->text());
+    });
+    QObject::connect(remove_token, &QPushButton::clicked, widget, [=] {
+        token_status->setText(QCoreApplication::translate("XLibrary", "Deleting token…"));
+        tokens->remove();
+    });
+    QObject::connect(tokens, &GithubTokenStore::changed, widget, [=](bool stored) {
+        token->clear();
+        token_status->setText(
+            stored ? QCoreApplication::translate("XLibrary", "A personal token is saved in the system secret store.")
+                   : QCoreApplication::translate("XLibrary",
+                                                 "No token saved. Update checks use unauthenticated requests."));
+    });
+    QObject::connect(tokens, &GithubTokenStore::failed, widget, [=](const QString &message) {
+        token_status->setText(message);
+        update_progress->hide();
+        update_status->setText(message);
+    });
+    QObject::connect(tokens, &GithubTokenStore::read_finished, updates,
+                     [=](const QString &value) { updates->check(value); });
     QObject::connect(updates, &UpdateChecker::busy_changed, widget, [=] {
-        check_update->setEnabled(!updates->is_busy());
         cancel_update->setVisible(updates->is_busy());
         release_button->setEnabled(!updates->is_busy());
         if (!updates->is_busy())
@@ -290,7 +366,7 @@ QWidget *about(const ui_context &context, QWidget *) {
         update_status->setText(QCoreApplication::translate("XLibrary", "Checking for updates…"));
         update_progress->setRange(0, 0);
         update_progress->show();
-        updates->check();
+        tokens->read();
     });
     QObject::connect(cancel_update, &QPushButton::clicked, widget, [=] {
         updates->cancel();
@@ -356,9 +432,8 @@ QWidget *about(const ui_context &context, QWidget *) {
     widget->layout()->addWidget(
         label(QCoreApplication::translate("XLibrary", "Technologies and licenses"), "subheading"));
     widget->layout()->addWidget(label(
-        QString(QCoreApplication::translate(
-                    "XLibrary",
-                    "Qt %1 · C++23 · SQLite\nXLibrary — MIT\nThird-party licenses are included with the application."))
+        QString(QCoreApplication::translate("XLibrary", "Qt %1 · C++23 · SQLite · QtKeychain\nXLibrary — "
+                                                        "MIT\nThird-party licenses are included with the application."))
             .arg(QString::fromLatin1(qVersion())),
         "muted"));
     static_cast<QVBoxLayout *>(widget->layout())->addStretch();

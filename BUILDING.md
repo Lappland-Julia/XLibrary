@@ -1,6 +1,6 @@
 # Сборка XLibrary для Windows и Linux
 
-Текущая версия в `VERSION` — **0.3.0**. Числа в примерах имён пакетов нужно
+Текущая версия в `VERSION` — **0.4.0**. Числа в примерах имён пакетов нужно
 заменять при изменении `VERSION`; Windows-упаковщик пока добавляет `pre-release`.
 Реализованный GUI использует **Qt Widgets**; QML и Qt Quick для сборки не нужны.
 
@@ -12,13 +12,15 @@
 
 ```sh
 sudo apt-get update
-sudo apt-get install build-essential clang cmake ninja-build qt6-base-dev qt6-wayland qt6-tools-dev qt6-l10n-tools libx11-dev
+sudo apt-get install build-essential clang cmake ninja-build qt6-base-dev qt6-wayland qt6-tools-dev qt6-l10n-tools libx11-dev libsecret-1-dev
 cmake --preset linux-debug
 cmake --build --preset linux-debug --parallel 4
 ./cmake-build-linux-debug/XLibrary
 ```
 
-В других дистрибутивах установите аналогичные development-пакеты. Если системный Qt старее 6.5, установите Linux Qt отдельно и передайте `-DCMAKE_PREFIX_PATH=/path/to/Qt/gcc_64`. SQLite загружается с проверкой хеша. Для автономной конфигурации можно указать уже проверенные исходники: `-DFETCHCONTENT_SOURCE_DIR_SQLITE3=/absolute/path/to/sqlite-amalgamation`.
+В других дистрибутивах установите аналогичные development-пакеты. Если системный Qt старее 6.5, установите Linux Qt отдельно и передайте `-DCMAKE_PREFIX_PATH=/path/to/Qt/gcc_64`. SQLite и QtKeychain 0.17.0 загружаются с проверкой хеша. QtKeychain связывается статически; на Linux для сборки нужны pkg-config и libsecret-1-dev. Для автономной конфигурации можно указать уже проверенные исходники: `-DFETCHCONTENT_SOURCE_DIR_SQLITE3=/absolute/path/to/sqlite-amalgamation` и `-DFETCHCONTENT_SOURCE_DIR_QTKEYCHAIN=/absolute/path/to/qtkeychain-0.17.0`.
+
+Личный GitHub-токен хранится через QtKeychain: Windows Credential Manager или системное хранилище Linux (Secret Service/KWallet). На Linux нужен запущенный и доступный сервис, например GNOME Keyring или KWallet. Сохранение открытым текстом запрещено. Без настроенного токена сервис секретов не требуется. Токен привязан к локальному пути профиля и пользователю ОС; после переноса portable-профиля его нужно ввести заново.
 
 В `CMakePresets.json` есть профили `linux-debug`, `linux-release`, `linux-clang-debug`, `windows-debug`, `windows-release` с раздельными каталогами. На Linux:
 
