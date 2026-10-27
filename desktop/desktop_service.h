@@ -8,6 +8,7 @@
 #include <QTimer>
 
 #include "library_model.h"
+#include "update_checker.h"
 
 class CatalogWorker;
 
@@ -43,6 +44,7 @@ public:
     LibraryModel model;
     LibraryFilter filter;
     QSettings settings;
+    UpdateChecker updates;
     explicit DesktopService(QObject *parent = nullptr, const QString &profile_path = {},
                             const QString &database_path = {});
     ~DesktopService() override;

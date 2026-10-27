@@ -4,6 +4,66 @@
 <context>
     <name>XLibrary</name>
     <message>
+        <source>The saved GitHub token was not found. Save a new token or delete it from the update settings.</source>
+        <translation>Сохранённый токен GitHub не найден. Сохраните новый токен или удалите его из настроек обновлений.</translation>
+    </message>
+    <message>
+        <source>Paste a GitHub Personal Access Token</source>
+        <translation>Вставьте личный токен доступа GitHub</translation>
+    </message>
+    <message>
+        <source>Personal GitHub token (optional)</source>
+        <translation>Личный токен GitHub (необязательно)</translation>
+    </message>
+    <message>
+        <source>For public releases, use a token without additional permissions. It is sent only to the GitHub API.</source>
+        <translation>Для публичных релизов используйте токен без дополнительных разрешений. Он передаётся только в GitHub API.</translation>
+    </message>
+    <message>
+        <source>Save token</source>
+        <translation>Сохранить токен</translation>
+    </message>
+    <message>
+        <source>Delete token</source>
+        <translation>Удалить токен</translation>
+    </message>
+    <message>
+        <source>A personal token is saved in the system secret store.</source>
+        <translation>Личный токен сохранён в системном хранилище секретов.</translation>
+    </message>
+    <message>
+        <source>No token saved. Update checks use unauthenticated requests.</source>
+        <translation>Токен не сохранён. Обновления проверяются без авторизации.</translation>
+    </message>
+    <message>
+        <source>Save token and Delete token take effect immediately. The token is not stored in the settings file or library export.</source>
+        <translation>Кнопки сохранения и удаления токена действуют сразу. Токен не попадает в файл настроек и экспорт библиотеки.</translation>
+    </message>
+    <message>
+        <source>Saving token…</source>
+        <translation>Сохранение токена…</translation>
+    </message>
+    <message>
+        <source>Deleting token…</source>
+        <translation>Удаление токена…</translation>
+    </message>
+    <message>
+        <source>Could not access the system secret store. Unlock it or check that a secret service is running.</source>
+        <translation>Не удалось получить доступ к системному хранилищу секретов. Разблокируйте его или убедитесь, что служба хранения секретов запущена.</translation>
+    </message>
+    <message>
+        <source>The system secret store was updated, but the settings file could not be saved. Please try again.</source>
+        <translation>Системное хранилище секретов обновлено, но файл настроек сохранить не удалось. Повторите попытку.</translation>
+    </message>
+    <message>
+        <source>The GitHub token contains invalid characters.</source>
+        <translation>Токен GitHub содержит недопустимые символы.</translation>
+    </message>
+    <message>
+        <source>GitHub rejected the personal token. Replace or delete it in the update settings.</source>
+        <translation>GitHub отклонил личный токен. Замените или удалите его в настройках обновлений.</translation>
+    </message>
+    <message>
         <source>Copy path</source>
         <translation>Скопировать путь</translation>
     </message>
@@ -1497,6 +1557,12 @@ Applications: %1</source>
         <translation>О программе</translation>
     </message>
     <message>
+        <location filename="../desktop/settings_view.cpp" line="280"/>
+        <location filename="../desktop/settings_view.cpp" line="487"/>
+        <source>Update</source>
+        <translation>Обновление</translation>
+    </message>
+    <message>
         <location filename="../desktop/settings_view.cpp" line="236"/>
         <source>Version </source>
         <translation>Версия </translation>
@@ -1528,10 +1594,10 @@ Applications: %1</source>
     </message>
     <message>
         <location filename="../desktop/settings_view.cpp" line="259"/>
-        <source>Qt %1 · C++23 · SQLite
+        <source>Qt %1 · C++23 · SQLite · QtKeychain
 XLibrary — MIT
 Third-party licenses are included with the application.</source>
-        <translation>Qt %1 · C++23 · SQLite
+        <translation>Qt %1 · C++23 · SQLite · QtKeychain
 XLibrary — MIT
 Лицензии сторонних компонентов входят в комплект программы.</translation>
     </message>
@@ -1691,8 +1757,8 @@ XLibrary — MIT
         <translation>Проверить наличие обновления</translation>
     </message>
     <message>
-        <source>Checks GitHub Releases on request, including pre-releases.</source>
-        <translation>Проверяет выпуски на GitHub по запросу, включая предварительные версии.</translation>
+        <source>Checks GitHub Releases at startup and on request, including pre-releases. Results are cached for 60 seconds without a token or 5 seconds with a token.</source>
+        <translation>Проверяет выпуски на GitHub при запуске и по запросу, включая предварительные версии. Результат кэшируется на 60 секунд без токена или на 5 секунд с токеном.</translation>
     </message>
     <message>
         <source>Update download progress</source>
@@ -1716,7 +1782,7 @@ XLibrary — MIT
     </message>
     <message>
         <source>You are using the latest available version.</source>
-        <translation>У вас установлена актуальная версия.</translation>
+        <translation>Установлена последняя версия.</translation>
     </message>
     <message>
         <source>No releases with a supported version were found.</source>
@@ -1729,6 +1795,14 @@ XLibrary — MIT
     <message>
         <source>New version available: %1</source>
         <translation>Доступна новая версия: %1</translation>
+    </message>
+    <message>
+        <source>Current version: %1</source>
+        <translation>Текущая версия: %1</translation>
+    </message>
+    <message>
+        <source>Open update settings</source>
+        <translation>Перейти к обновлению</translation>
     </message>
     <message>
         <source>XLibrary update</source>

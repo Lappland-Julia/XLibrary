@@ -48,7 +48,7 @@ set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
 set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 # Платформенные плагины Qt загружаются динамически и не видны dpkg-shlibdeps.
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "qt6-qpa-plugins, qt6-wayland, xdg-utils")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "qt6-qpa-plugins, qt6-wayland, xdg-utils, libsecret-1-0")
 
 foreach(xlibrary_qt_module IN ITEMS Core Gui Widgets Concurrent Network DBus)
     get_target_property(xlibrary_qt_library Qt6::${xlibrary_qt_module} LOCATION)

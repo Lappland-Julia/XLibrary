@@ -1,5 +1,7 @@
+#include <QHideEvent>
 #include <QProgressBar>
 #include <QPropertyAnimation>
+#include <QShowEvent>
 #include <QToolButton>
 
 #include "notification_banner.h"
@@ -73,15 +75,34 @@ void NotificationBanner::refresh_appearance() {
     message_label->setText(text);
 }
 
-void NotificationBanner::show_message(const QString &text, const QString &description, const QString &link_text) {
+void NotificationBanner::show_message(const QString &text, const QString &description, const QString &link_text,
+                                      bool auto_dismiss) {
     countdown->stop();
     message = text;
     this->description = description;
     this->link_text = link_text;
-    progress->setValue(0);
+    progress->setRange(0, auto_dismiss ? countdown->duration() : 0);
+    if (auto_dismiss)
+        progress->setValue(0);
     refresh_appearance();
     set_expanded(true);
-    countdown->start();
+    if (auto_dismiss) {
+        countdown->start();
+        if (!isVisible())
+            countdown->pause();
+    }
+}
+
+void NotificationBanner::showEvent(QShowEvent *event) {
+    AnimatedReveal::showEvent(event);
+    if (countdown->state() == QAbstractAnimation::Paused)
+        countdown->resume();
+}
+
+void NotificationBanner::hideEvent(QHideEvent *event) {
+    if (countdown->state() == QAbstractAnimation::Running)
+        countdown->pause();
+    AnimatedReveal::hideEvent(event);
 }
 
 void NotificationBanner::dismiss() {

@@ -67,15 +67,38 @@ unused tags, settings, and launch history are not included.
 
 ## Updates
 
-Open **Settings → About → Check for updates** to query this project's GitHub Releases.
-Checks run only on request and include published pre-releases. Versions are compared using
+XLibrary checks this project's GitHub Releases at startup. If a newer version is available,
+an in-app notification links to **Settings → Update**, where you can confirm the update.
+You can also use **Settings → Update → Check for updates** at any time.
+The notification stays visible while checking and then shows the result, including when
+the latest version is already installed, no releases are found, or the check fails or is cancelled.
+You can optionally enter your own GitHub Personal Access Token in the same section.
+For this public repository, a token without additional permissions is sufficient.
+Click **Save token** to store it in Windows Credential Manager or the Linux secret store
+(Secret Service/KWallet); **Delete token** restores unauthenticated checks. These two
+buttons take effect immediately, independently of the settings dialog's Save/Cancel buttons.
+The token is sent only to `api.github.com`, including subsequent release-list pages, and
+is never attached to installer downloads. It is not written to `settings.ini` or catalog exports.
+If the secret store is unavailable or locked, XLibrary reports the error and never falls back
+to plaintext storage. A saved token belongs to the OS user and local profile path; enter it
+again after moving a portable profile. A token is optional; checks work without one.
+
+Check results are cached locally for **60 seconds without a token** or **5 seconds with
+a token**, measured from completion. Repeated clicks return the cached result without
+new GitHub requests. Errors and cancellations use the same interval. The cache stays in
+memory for the application session, including when Settings is closed and reopened.
+Unauthenticated checks and each personal token have separate cache entries; tokens
+themselves are not stored in the cache. Reading a cached result does not extend its lifetime.
+
+Checks run at startup and on request and include published pre-releases. Versions are compared using
 Semantic Versioning; drafts and tags without a supported version are ignored.
 
 On Windows x64, an installer-managed copy can download the matching MinGW or MSVC installer
 after confirmation. XLibrary verifies its size and GitHub-provided SHA-256 before starting
 the installation wizard in the existing installation directory, then exits normally. The
 wizard completes the update and offers to reopen XLibrary; the library and settings stay
-in the existing profile. Downloads can be cancelled; closing Settings cancels an active request.
+in the existing profile. Downloads can be cancelled; closing Settings cancels checks and downloads
+started from that dialog. The automatic startup check continues if Settings is closed.
 
 Portable copies, Linux installations, and releases without a matching installer and SHA-256
 open the release in your browser after confirmation. Follow its update instructions and keep

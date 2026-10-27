@@ -3,7 +3,9 @@
 
 #include <memory>
 #include <QCryptographicHash>
+#include <QElapsedTimer>
 #include <QFile>
+#include <QHash>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QTemporaryDir>
@@ -15,10 +17,18 @@ class QNetworkReply;
 class UpdateChecker : public QObject {
     Q_OBJECT
 private:
+    struct cached_check {
+        QElapsedTimer age;
+        QJsonObject release;
+        QString error;
+    };
+    QHash<QByteArray, cached_check> check_cache;
+    QByteArray check_key;
     QNetworkAccessManager network;
     QTimer deadline;
     QNetworkReply *reply = nullptr;
     QByteArray response;
+    QByteArray authorization_token;
     QJsonObject latest_release;
     int release_page = 0;
     bool busy = false;
@@ -37,6 +47,7 @@ private:
     void select_release();
     void stop_request();
     void fail(const QString &message);
+    void cache_result(const QString &error = {});
 
 public:
     explicit UpdateChecker(QObject *parent = nullptr);
@@ -45,12 +56,14 @@ public:
     QString available_version() const { return release_tag; }
     QUrl available_release_url() const { return release_url; }
     bool can_install() const;
-    void check();
+    void check(const QString &token = {});
     void download();
     void cancel();
     bool launch_installer(QString &error);
 
 signals:
+    void check_started();
+    void check_cancelled();
     void busy_changed();
     void update_available();
     void up_to_date(bool releases_exist);

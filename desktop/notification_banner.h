@@ -19,13 +19,18 @@ private:
     QString description;
     QString link_text;
 
+protected:
+    void showEvent(QShowEvent *event) override;
+    void hideEvent(QHideEvent *event) override;
+
 public:
     std::function<void()> activated;
 
     explicit NotificationBanner(QSettings &settings, int spacing = 0, int duration_ms = 7000,
                                 QWidget *parent = nullptr);
     void refresh_appearance();
-    void show_message(const QString &text, const QString &description = {}, const QString &link_text = {});
+    void show_message(const QString &text, const QString &description = {}, const QString &link_text = {},
+                      bool auto_dismiss = true);
     void dismiss();
 };
 

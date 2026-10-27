@@ -15,6 +15,8 @@
 namespace {
 constexpr qint64 metadata_limit = 4 * 1024 * 1024;
 constexpr qint64 installer_limit = 512 * 1024 * 1024;
+constexpr qint64 anonymous_check_interval = 60000;
+constexpr qint64 authenticated_check_interval = 5000;
 constexpr auto repository_path = "/Lappland-Julia/XLibrary/releases/";
 
 struct release_version {
@@ -125,29 +127,54 @@ void UpdateChecker::stop_request() {
     }
     installer.close();
     response.clear();
+    authorization_token.clear();
     download_directory.reset();
     busy = false;
     downloading = false;
 }
 
 void UpdateChecker::fail(const QString &message) {
+    if (busy && !downloading)
+        cache_result(message);
     stop_request();
     emit busy_changed();
     emit failed(message);
 }
 
 void UpdateChecker::cancel() {
+    const bool checking = busy && !downloading;
+    if (checking)
+        cache_result(QCoreApplication::translate("XLibrary", "Update cancelled."));
     stop_request();
     emit busy_changed();
+    if (checking)
+        emit check_cancelled();
 }
 
-void UpdateChecker::check() {
+void UpdateChecker::cache_result(const QString &error) {
+    cached_check result;
+    result.age.start();
+    result.release = error.isEmpty() ? latest_release : QJsonObject{};
+    result.error = error;
+    check_cache.insert(check_key, result);
+}
+
+void UpdateChecker::check(const QString &token) {
     if (busy)
         return;
+    emit check_started();
+    const auto trimmed_token = token.trimmed();
+    if (trimmed_token.size() > 1024 || !std::all_of(trimmed_token.begin(), trimmed_token.end(), [](QChar c) {
+            return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+        })) {
+        emit failed(QCoreApplication::translate("XLibrary", "The GitHub token contains invalid characters."));
+        return;
+    }
     if (!parse_version(QCoreApplication::applicationVersion())) {
         emit failed(QCoreApplication::translate("XLibrary", "The current application version is invalid."));
         return;
     }
+    stop_request();
     latest_release = {};
     release_tag.clear();
     release_url.clear();
@@ -155,6 +182,27 @@ void UpdateChecker::check() {
     installer_digest.clear();
     installer_size = 0;
     release_page = 0;
+    check_key = trimmed_token.isEmpty() ? QByteArray{}
+                                        : QCryptographicHash::hash(trimmed_token.toUtf8(), QCryptographicHash::Sha256);
+    // Чтение кэша не продлевает его срок; истёкшие записи удаляются вместе с отпечатками токенов.
+    for (auto it = check_cache.begin(); it != check_cache.end();) {
+        const auto interval = it.key().isEmpty() ? anonymous_check_interval : authenticated_check_interval;
+        if (it->age.elapsed() >= interval)
+            it = check_cache.erase(it);
+        else
+            ++it;
+    }
+    const auto cached = check_cache.constFind(check_key);
+    if (cached != check_cache.cend()) {
+        if (!cached->error.isEmpty()) {
+            emit failed(cached->error);
+        } else {
+            latest_release = cached->release;
+            select_release();
+        }
+        return;
+    }
+    authorization_token = trimmed_token.toLatin1();
     busy = true;
     downloading = false;
     deadline.start(60000);
@@ -169,6 +217,8 @@ void UpdateChecker::request_releases() {
                          .arg(++release_page)));
     query.setRawHeader("Accept", "application/vnd.github+json");
     query.setRawHeader("X-GitHub-Api-Version", "2022-11-28");
+    if (!authorization_token.isEmpty())
+        query.setRawHeader("Authorization", "Bearer " + authorization_token);
     reply = network.get(query);
     reply->setReadBufferSize(256 * 1024);
     connect(reply, &QNetworkReply::redirected, this, [this](const QUrl &) {
@@ -220,6 +270,11 @@ void UpdateChecker::finish_reply() {
     reply = nullptr;
     finished->deleteLater();
     const auto status = finished->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    if (!downloading && status == 401) {
+        fail(QCoreApplication::translate(
+            "XLibrary", "GitHub rejected the personal token. Replace or delete it in the update settings."));
+        return;
+    }
     if (status == 403 || status == 429) {
         fail(QCoreApplication::translate("XLibrary", "GitHub has limited update requests. Please try again later."));
         return;
@@ -290,7 +345,9 @@ void UpdateChecker::finish_reply() {
         return;
     }
     deadline.stop();
+    cache_result();
     busy = false;
+    authorization_token.clear();
     select_release();
 }
 
