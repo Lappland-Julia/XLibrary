@@ -15,6 +15,8 @@
 namespace {
 constexpr qint64 metadata_limit = 4 * 1024 * 1024;
 constexpr qint64 installer_limit = 512 * 1024 * 1024;
+constexpr qint64 anonymous_check_interval = 60000;
+constexpr qint64 authenticated_check_interval = 5000;
 constexpr auto repository_path = "/Lappland-Julia/XLibrary/releases/";
 
 struct release_version {
@@ -132,14 +134,26 @@ void UpdateChecker::stop_request() {
 }
 
 void UpdateChecker::fail(const QString &message) {
+    if (busy && !downloading)
+        cache_result(message);
     stop_request();
     emit busy_changed();
     emit failed(message);
 }
 
 void UpdateChecker::cancel() {
+    if (busy && !downloading)
+        cache_result(QCoreApplication::translate("XLibrary", "Update cancelled."));
     stop_request();
     emit busy_changed();
+}
+
+void UpdateChecker::cache_result(const QString &error) {
+    cached_check result;
+    result.age.start();
+    result.release = error.isEmpty() ? latest_release : QJsonObject{};
+    result.error = error;
+    check_cache.insert(check_key, result);
 }
 
 void UpdateChecker::check(const QString &token) {
@@ -156,6 +170,7 @@ void UpdateChecker::check(const QString &token) {
         emit failed(QCoreApplication::translate("XLibrary", "The current application version is invalid."));
         return;
     }
+    stop_request();
     latest_release = {};
     release_tag.clear();
     release_url.clear();
@@ -163,6 +178,26 @@ void UpdateChecker::check(const QString &token) {
     installer_digest.clear();
     installer_size = 0;
     release_page = 0;
+    check_key = trimmed_token.isEmpty() ? QByteArray{}
+                                        : QCryptographicHash::hash(trimmed_token.toUtf8(), QCryptographicHash::Sha256);
+    // Чтение кэша не продлевает его срок; истёкшие записи удаляются вместе с отпечатками токенов.
+    for (auto it = check_cache.begin(); it != check_cache.end();) {
+        const auto interval = it.key().isEmpty() ? anonymous_check_interval : authenticated_check_interval;
+        if (it->age.elapsed() >= interval)
+            it = check_cache.erase(it);
+        else
+            ++it;
+    }
+    const auto cached = check_cache.constFind(check_key);
+    if (cached != check_cache.cend()) {
+        if (!cached->error.isEmpty()) {
+            emit failed(cached->error);
+        } else {
+            latest_release = cached->release;
+            select_release();
+        }
+        return;
+    }
     authorization_token = trimmed_token.toLatin1();
     busy = true;
     downloading = false;
@@ -306,6 +341,7 @@ void UpdateChecker::finish_reply() {
         return;
     }
     deadline.stop();
+    cache_result();
     busy = false;
     authorization_token.clear();
     select_release();

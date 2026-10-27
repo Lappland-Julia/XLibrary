@@ -1751,8 +1751,8 @@ XLibrary — MIT
         <translation>Проверить наличие обновления</translation>
     </message>
     <message>
-        <source>Checks GitHub Releases on request, including pre-releases.</source>
-        <translation>Проверяет выпуски на GitHub по запросу, включая предварительные версии.</translation>
+        <source>Checks GitHub Releases on request, including pre-releases. Results are cached for 60 seconds without a token or 5 seconds with a token.</source>
+        <translation>Проверяет выпуски на GitHub по запросу, включая предварительные версии. Результат кэшируется на 60 секунд без токена или на 5 секунд с токеном.</translation>
     </message>
     <message>
         <source>Update download progress</source>

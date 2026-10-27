@@ -3,7 +3,9 @@
 
 #include <memory>
 #include <QCryptographicHash>
+#include <QElapsedTimer>
 #include <QFile>
+#include <QHash>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QTemporaryDir>
@@ -15,6 +17,13 @@ class QNetworkReply;
 class UpdateChecker : public QObject {
     Q_OBJECT
 private:
+    struct cached_check {
+        QElapsedTimer age;
+        QJsonObject release;
+        QString error;
+    };
+    QHash<QByteArray, cached_check> check_cache;
+    QByteArray check_key;
     QNetworkAccessManager network;
     QTimer deadline;
     QNetworkReply *reply = nullptr;
@@ -38,6 +47,7 @@ private:
     void select_release();
     void stop_request();
     void fail(const QString &message);
+    void cache_result(const QString &error = {});
 
 public:
     explicit UpdateChecker(QObject *parent = nullptr);

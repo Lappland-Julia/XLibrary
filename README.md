@@ -77,7 +77,14 @@ The token is sent only to `api.github.com`, including subsequent release-list pa
 is never attached to installer downloads. It is not written to `settings.ini` or catalog exports.
 If the secret store is unavailable or locked, XLibrary reports the error and never falls back
 to plaintext storage. A saved token belongs to the OS user and local profile path; enter it
-again after moving a portable profile. Without a saved token, checks work as before.
+again after moving a portable profile. A token is optional; checks work without one.
+
+Check results are cached locally for **60 seconds without a token** or **5 seconds with
+a token**, measured from completion. Repeated clicks return the cached result without
+new GitHub requests. Errors and cancellations use the same interval. The cache stays in
+memory for the application session, including when Settings is closed and reopened.
+Unauthenticated checks and each personal token have separate cache entries; tokens
+themselves are not stored in the cache. Reading a cached result does not extend its lifetime.
 
 Checks run only on request and include published pre-releases. Versions are compared using
 Semantic Versioning; drafts and tags without a supported version are ignored.

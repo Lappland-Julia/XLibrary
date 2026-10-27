@@ -260,7 +260,9 @@ QWidget *about(const ui_context &context, QWidget *) {
     auto *issues = button(QCoreApplication::translate("XLibrary", "Report an issue ↗"));
     card_layout->addWidget(github);
     card_layout->addWidget(issues);
-    auto *updates = new UpdateChecker(widget);
+    // Проверяющий объект и его кэш живут дольше окна настроек.
+    auto *updates = &static_cast<DesktopService *>(context.service)->updates;
+    QObject::connect(widget, &QObject::destroyed, updates, &UpdateChecker::cancel);
     auto *tokens = new GithubTokenStore(*context.settings, context.service);
     // libsecret завершает запрос асинхронно; закрытие окна не должно уничтожать активный job.
     QObject::connect(widget, &QObject::destroyed, tokens, [tokens] {
@@ -303,8 +305,11 @@ QWidget *about(const ui_context &context, QWidget *) {
                                                 "The token is not stored in the settings file or library export."),
         "muted"));
     auto *check_update = button(QCoreApplication::translate("XLibrary", "Check for updates"));
-    auto *update_status = label(
-        QCoreApplication::translate("XLibrary", "Checks GitHub Releases on request, including pre-releases."), "muted");
+    auto *update_status =
+        label(QCoreApplication::translate(
+                  "XLibrary", "Checks GitHub Releases on request, including pre-releases. "
+                              "Results are cached for 60 seconds without a token or 5 seconds with a token."),
+              "muted");
     auto *update_progress = new QProgressBar;
     update_progress->setAccessibleName(QCoreApplication::translate("XLibrary", "Update download progress"));
     update_progress->hide();
@@ -353,7 +358,7 @@ QWidget *about(const ui_context &context, QWidget *) {
         update_progress->hide();
         update_status->setText(message);
     });
-    QObject::connect(tokens, &GithubTokenStore::read_finished, updates,
+    QObject::connect(tokens, &GithubTokenStore::read_finished, widget,
                      [=](const QString &value) { updates->check(value); });
     QObject::connect(updates, &UpdateChecker::busy_changed, widget, [=] {
         cancel_update->setVisible(updates->is_busy());
