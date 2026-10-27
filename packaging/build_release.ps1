@@ -6,7 +6,8 @@ param(
     [string]$InnoCompiler = '',
     [string]$MsvcRuntimePath = '',
     [string]$CompilerLicensePath = '',
-    [string]$QtSourceManifest = "$PSScriptRoot/qt_sources.json"
+    [string]$QtSourceManifest = "$PSScriptRoot/qt_sources.json",
+    [string]$QtSourceCache = 'build/windows-packaging-cache'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -149,6 +150,8 @@ try {
     }
     $sources = Join-Path $package 'sources'
     New-Item -ItemType Directory -Path $sources | Out-Null
+    $source_cache = Resolve-RepositoryPath $QtSourceCache
+    New-Item -ItemType Directory -Path $source_cache -Force | Out-Null
     $notices = [Collections.Generic.List[string]]::new()
     $notices.Add("Qt $qt_version is dynamically linked under LGPLv3; see licenses/qtbase and sources/.")
     $notices.Add('You may replace the Qt DLLs/plugins with compatible modified builds. Reverse engineering for debugging those modifications is permitted.')
@@ -159,10 +162,38 @@ try {
         $archive_name = "$module-everywhere-src-$qt_version.tar.xz"
         $url = "https://download.qt.io/archive/qt/$($qt_version -replace '\.\d+$','')/$qt_version/submodules/$archive_name"
         $archive = Join-Path $sources $archive_name
-        Invoke-WebRequest -Uri $url -OutFile $archive
-        if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $hash) {
-            throw "Qt source checksum mismatch: $archive_name"
+        $cached_archive = Join-Path $source_cache $archive_name
+        if (Test-Path -LiteralPath $cached_archive -PathType Leaf) {
+            if ((Get-FileHash -LiteralPath $cached_archive -Algorithm SHA256).Hash -ne $hash) {
+                throw "Qt source cache checksum mismatch. Remove or replace this file: $cached_archive"
+            }
+            Write-Output "Using verified Qt source cache: $cached_archive"
+        } else {
+            # Незавершённая загрузка не должна становиться пригодным для повторного использования архивом.
+            $download_path = "$cached_archive.$([guid]::NewGuid().ToString('N')).download"
+            try {
+                for ($attempt = 1; $attempt -le 3; ++$attempt) {
+                    try {
+                        Write-Output "Downloading Qt source ($attempt/3): $url"
+                        Invoke-WebRequest -Uri $url -OutFile $download_path -TimeoutSec 300
+                        break
+                    } catch {
+                        if ($attempt -eq 3) {
+                            throw "Cannot download $url. You can place the archive in $cached_archive. $($_.Exception.Message)"
+                        }
+                        Write-Warning "Qt source download interrupted; retrying: $($_.Exception.Message)"
+                        Start-Sleep -Seconds (2 * $attempt)
+                    }
+                }
+                if ((Get-FileHash -LiteralPath $download_path -Algorithm SHA256).Hash -ne $hash) {
+                    throw "Qt source checksum mismatch: $archive_name"
+                }
+                Move-Item -LiteralPath $download_path -Destination $cached_archive -Force
+            } finally {
+                if (Test-Path -LiteralPath $download_path) { Remove-Item -LiteralPath $download_path -Force }
+            }
         }
+        Copy-Item -LiteralPath $cached_archive -Destination $archive
         & tar -xf $archive -C $stage "$module-everywhere-src-$qt_version/LICENSES"
         if ($LASTEXITCODE -ne 0) { throw "Cannot extract $module licenses." }
         Copy-Item -LiteralPath "$stage/$module-everywhere-src-$qt_version/LICENSES" -Destination "$licenses/$module" -Recurse

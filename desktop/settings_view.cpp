@@ -1,3 +1,4 @@
+#include <memory>
 #include <QButtonGroup>
 #include <QCheckBox>
 #include <QComboBox>
@@ -260,9 +261,37 @@ QWidget *about(const ui_context &context, QWidget *) {
     auto *issues = button(QCoreApplication::translate("XLibrary", "Report an issue ↗"));
     card_layout->addWidget(github);
     card_layout->addWidget(issues);
+    QObject::connect(github, &QPushButton::clicked, widget,
+                     [] { desktop_platform::open_url(QUrl("https://github.com/Lappland-Julia/XLibrary")); });
+    QObject::connect(issues, &QPushButton::clicked, widget,
+                     [] { desktop_platform::open_url(QUrl("https://github.com/Lappland-Julia/XLibrary/issues")); });
+    widget->layout()->addWidget(card);
+    widget->layout()->addWidget(
+        label(QCoreApplication::translate("XLibrary", "Technologies and licenses"), "subheading"));
+    widget->layout()->addWidget(label(
+        QString(QCoreApplication::translate("XLibrary", "Qt %1 · C++23 · SQLite · QtKeychain\nXLibrary — "
+                                                        "MIT\nThird-party licenses are included with the application."))
+            .arg(QString::fromLatin1(qVersion())),
+        "muted"));
+    static_cast<QVBoxLayout *>(widget->layout())->addStretch();
+    return widget;
+}
+
+QWidget *update_page(const ui_context &context, QWidget *) {
+    auto *widget = page(QCoreApplication::translate("XLibrary", "Update"));
+    auto *card = new QFrame;
+    card->setProperty("card", true);
+    auto *card_layout = new QVBoxLayout(card);
+    card_layout->setContentsMargins(24, 24, 24, 24);
+    card_layout->setSpacing(12);
     // Проверяющий объект и его кэш живут дольше окна настроек.
     auto *updates = &static_cast<DesktopService *>(context.service)->updates;
-    QObject::connect(widget, &QObject::destroyed, updates, &UpdateChecker::cancel);
+    auto request_started = std::make_shared<bool>(false);
+    QObject::connect(widget, &QObject::destroyed, updates, [updates, request_started] {
+        // Закрытие настроек не отменяет автоматическую проверку при запуске.
+        if (*request_started)
+            updates->cancel();
+    });
     auto *tokens = new GithubTokenStore(*context.settings, context.service);
     // libsecret завершает запрос асинхронно; закрытие окна не должно уничтожать активный job.
     QObject::connect(widget, &QObject::destroyed, tokens, [tokens] {
@@ -307,7 +336,7 @@ QWidget *about(const ui_context &context, QWidget *) {
     auto *check_update = button(QCoreApplication::translate("XLibrary", "Check for updates"));
     auto *update_status =
         label(QCoreApplication::translate(
-                  "XLibrary", "Checks GitHub Releases on request, including pre-releases. "
+                  "XLibrary", "Checks GitHub Releases at startup and on request, including pre-releases. "
                               "Results are cached for 60 seconds without a token or 5 seconds with a token."),
               "muted");
     auto *update_progress = new QProgressBar;
@@ -317,10 +346,14 @@ QWidget *about(const ui_context &context, QWidget *) {
     cancel_update->hide();
     auto *release_button = button(QCoreApplication::translate("XLibrary", "Open release on GitHub ↗"));
     release_button->hide();
+    auto *install_update = button(QCoreApplication::translate("XLibrary", "Update now"));
+    install_update->setAutoDefault(false);
+    install_update->hide();
     card_layout->addWidget(check_update);
     card_layout->addWidget(update_status);
     card_layout->addWidget(update_progress);
     card_layout->addWidget(cancel_update);
+    card_layout->addWidget(install_update);
     card_layout->addWidget(release_button);
     auto open_release = [=] {
         if (!desktop_platform::open_url(updates->available_release_url()))
@@ -333,6 +366,7 @@ QWidget *about(const ui_context &context, QWidget *) {
         save_token->setEnabled(idle && !token->text().isEmpty() && token->hasAcceptableInput());
         remove_token->setEnabled(idle && tokens->has_token());
         check_update->setEnabled(idle);
+        install_update->setEnabled(idle);
     };
     QObject::connect(token, &QLineEdit::textChanged, widget, refresh_token_controls);
     QObject::connect(tokens, &GithubTokenStore::busy_changed, widget, refresh_token_controls);
@@ -358,16 +392,23 @@ QWidget *about(const ui_context &context, QWidget *) {
         update_progress->hide();
         update_status->setText(message);
     });
-    QObject::connect(tokens, &GithubTokenStore::read_finished, widget,
-                     [=](const QString &value) { updates->check(value); });
+    QObject::connect(tokens, &GithubTokenStore::read_finished, widget, [=](const QString &value) {
+        const bool was_busy = updates->is_busy();
+        updates->check(value);
+        // Чтение токена может завершиться уже после запуска фонового запроса.
+        *request_started = !was_busy && updates->is_busy();
+    });
     QObject::connect(updates, &UpdateChecker::busy_changed, widget, [=] {
         cancel_update->setVisible(updates->is_busy());
         release_button->setEnabled(!updates->is_busy());
-        if (!updates->is_busy())
+        if (!updates->is_busy()) {
+            *request_started = false;
             update_progress->hide();
+        }
     });
     QObject::connect(check_update, &QPushButton::clicked, widget, [=] {
         release_button->hide();
+        install_update->hide();
         update_status->setText(QCoreApplication::translate("XLibrary", "Checking for updates…"));
         update_progress->setRange(0, 0);
         update_progress->show();
@@ -395,10 +436,27 @@ QWidget *about(const ui_context &context, QWidget *) {
                                    .arg(received / (1024.0 * 1024.0), 0, 'f', 1)
                                    .arg(total / (1024.0 * 1024.0), 0, 'f', 1));
     });
-    QObject::connect(updates, &UpdateChecker::update_available, widget, [=] {
+    auto show_available_update = [=] {
         release_button->show();
+        install_update->setText(
+            QCoreApplication::translate("XLibrary", updates->can_install() ? "Update now" : "Open release"));
+        install_update->show();
         update_status->setText(
             QCoreApplication::translate("XLibrary", "New version available: %1").arg(updates->available_version()));
+    };
+    QObject::connect(updates, &UpdateChecker::update_available, widget, show_available_update);
+    if (!updates->available_version().isEmpty())
+        show_available_update();
+    if (updates->is_busy()) {
+        update_status->setText(QCoreApplication::translate("XLibrary", "Checking for updates…"));
+        update_progress->setRange(0, 0);
+        update_progress->show();
+        cancel_update->show();
+        release_button->setEnabled(false);
+    }
+    QObject::connect(install_update, &QPushButton::clicked, widget, [=] {
+        if (updates->is_busy() || tokens->is_busy() || updates->available_version().isEmpty())
+            return;
         if (updates->can_install()) {
             if (confirm(widget, QCoreApplication::translate("XLibrary", "XLibrary update"),
                         QCoreApplication::translate(
@@ -407,8 +465,10 @@ QWidget *about(const ui_context &context, QWidget *) {
                                         "Complete the update in the installation wizard. Your library and settings "
                                         "will be kept. Save any unsaved edits before continuing.")
                             .arg(updates->available_version(), QCoreApplication::applicationVersion()),
-                        QCoreApplication::translate("XLibrary", "Update now")))
+                        QCoreApplication::translate("XLibrary", "Update now"))) {
+                *request_started = true;
                 updates->download();
+            }
         } else if (confirm(widget, QCoreApplication::translate("XLibrary", "XLibrary update"),
                            QCoreApplication::translate(
                                "XLibrary",
@@ -429,18 +489,7 @@ QWidget *about(const ui_context &context, QWidget *) {
             update_status->setText(error);
         }
     });
-    QObject::connect(github, &QPushButton::clicked, widget,
-                     [] { desktop_platform::open_url(QUrl("https://github.com/Lappland-Julia/XLibrary")); });
-    QObject::connect(issues, &QPushButton::clicked, widget,
-                     [] { desktop_platform::open_url(QUrl("https://github.com/Lappland-Julia/XLibrary/issues")); });
     widget->layout()->addWidget(card);
-    widget->layout()->addWidget(
-        label(QCoreApplication::translate("XLibrary", "Technologies and licenses"), "subheading"));
-    widget->layout()->addWidget(label(
-        QString(QCoreApplication::translate("XLibrary", "Qt %1 · C++23 · SQLite · QtKeychain\nXLibrary — "
-                                                        "MIT\nThird-party licenses are included with the application."))
-            .arg(QString::fromLatin1(qVersion())),
-        "muted"));
     static_cast<QVBoxLayout *>(widget->layout())->addStretch();
     return widget;
 }
@@ -472,10 +521,12 @@ QDialog *settings_dialog(const ui_context &context, QWidget *parent) {
         {QCoreApplication::translate("XLibrary", "Keyboard shortcuts"), "settings_hotkeys"},
         {QCoreApplication::translate("XLibrary", "Library"), "settings_library"},
         {QCoreApplication::translate("XLibrary", "Plugins"), "settings_plugins"},
+        {QCoreApplication::translate("XLibrary", "Update"), "settings_update"},
         {QCoreApplication::translate("XLibrary", "About"), "settings_about"}};
     for (const auto &section : sections) {
         const auto index = pages->count();
         auto *item = new SelectionButton(section.first);
+        item->setObjectName(section.second + "_category");
         categories->addButton(item, index);
         navigation_layout->addWidget(item);
         auto *holder = new QWidget;
@@ -508,6 +559,10 @@ QDialog *settings_dialog(const ui_context &context, QWidget *parent) {
         transition->start();
     });
     categories->button(0)->setChecked(true);
+    const auto initial_section = context.parameters.value("settings_section").toString();
+    for (qsizetype index = 0; index < sections.size(); ++index)
+        if (sections[index].second == initial_section)
+            categories->button(static_cast<int>(index))->click();
     auto *error = label("", "error");
     error->hide();
     root->addWidget(error);
@@ -615,5 +670,6 @@ void register_settings_views(UiRegistry &registry) {
     registry.add_default("settings_hotkeys", hotkeys);
     registry.add_default("settings_library", library_settings);
     registry.add_default("settings_plugins", plugins);
+    registry.add_default("settings_update", update_page);
     registry.add_default("settings_about", about);
 }

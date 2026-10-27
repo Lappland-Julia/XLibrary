@@ -142,10 +142,13 @@ void UpdateChecker::fail(const QString &message) {
 }
 
 void UpdateChecker::cancel() {
-    if (busy && !downloading)
+    const bool checking = busy && !downloading;
+    if (checking)
         cache_result(QCoreApplication::translate("XLibrary", "Update cancelled."));
     stop_request();
     emit busy_changed();
+    if (checking)
+        emit check_cancelled();
 }
 
 void UpdateChecker::cache_result(const QString &error) {
@@ -159,6 +162,7 @@ void UpdateChecker::cache_result(const QString &error) {
 void UpdateChecker::check(const QString &token) {
     if (busy)
         return;
+    emit check_started();
     const auto trimmed_token = token.trimmed();
     if (trimmed_token.size() > 1024 || !std::all_of(trimmed_token.begin(), trimmed_token.end(), [](QChar c) {
             return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';

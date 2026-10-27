@@ -62,6 +62,8 @@ public:
     bool launch_installer(QString &error);
 
 signals:
+    void check_started();
+    void check_cancelled();
     void busy_changed();
     void update_available();
     void up_to_date(bool releases_exist);

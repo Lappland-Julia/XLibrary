@@ -1,3 +1,4 @@
+#include <QAbstractButton>
 #include <QApplication>
 #include <QClipboard>
 #include <QCloseEvent>
@@ -11,6 +12,7 @@
 
 #include "appearance.h"
 #include "editors.h"
+#include "github_token_store.h"
 #include "library_splitter.h"
 #include "library_views.h"
 #include "localization.h"
@@ -46,6 +48,33 @@ QWidget *shell(const ui_context &context, QWidget *parent) {
     const auto show_notice = [=](const QString &text) { notice->show_message(text); };
     QObject::connect(service, &DesktopService::message, notice, show_notice);
     QObject::connect(service, &DesktopService::scenario_changed, notice, show_notice);
+    auto *update_notice = new NotificationBanner(*context.settings, 20);
+    body->addWidget(update_notice);
+    QObject::connect(service, &DesktopService::appearance_changed, update_notice,
+                     &NotificationBanner::refresh_appearance);
+    QObject::connect(&service->updates, &UpdateChecker::check_started, update_notice, [=] {
+        update_notice->show_message(QCoreApplication::translate("XLibrary", "Checking for updates…"), {}, {}, false);
+    });
+    QObject::connect(&service->updates, &UpdateChecker::update_available, update_notice, [=] {
+        update_notice->show_message(
+            QCoreApplication::translate("XLibrary", "New version available: %1")
+                .arg(service->updates.available_version()),
+            QCoreApplication::translate("XLibrary", "Current version: %1").arg(QCoreApplication::applicationVersion()),
+            QCoreApplication::translate("XLibrary", "Open update settings"));
+    });
+    QObject::connect(&service->updates, &UpdateChecker::up_to_date, update_notice, [=](bool releases_exist) {
+        update_notice->show_message(
+            releases_exist
+                ? QCoreApplication::translate("XLibrary", "You are using the latest available version.")
+                : QCoreApplication::translate("XLibrary", "No releases with a supported version were found."),
+            QCoreApplication::translate("XLibrary", "Current version: %1").arg(QCoreApplication::applicationVersion()));
+    });
+    QObject::connect(&service->updates, &UpdateChecker::failed, update_notice,
+                     [=](const QString &message) { update_notice->show_message(message); });
+    QObject::connect(&service->updates, &UpdateChecker::check_cancelled, update_notice, [=] {
+        update_notice->show_message(QCoreApplication::translate("XLibrary", "Update cancelled."));
+    });
+    update_notice->activated = [=] { context.actions.value("update_settings")->trigger(); };
     auto *splitter = new LibrarySplitter(*context.settings, navigation, center,
                                          context.registry->create("details", context, widget), widget);
     root->addWidget(splitter);
@@ -158,6 +187,16 @@ void MainWindow::create_actions() {
         if (!isVisible())
             show_library();
         open_dialog("settings", context);
+    });
+    add("update_settings", QCoreApplication::translate("XLibrary", "Update"), "refresh", [this] {
+        if (!isVisible())
+            show_library();
+        auto update_context = context;
+        update_context.parameters.insert("settings_section", "settings_update");
+        if (auto *existing = findChild<QWidget *>("settings", Qt::FindDirectChildrenOnly))
+            if (auto *category = existing->findChild<QAbstractButton *>("settings_update_category"))
+                category->click();
+        open_dialog("settings", update_context);
     });
     add("add_application", QCoreApplication::translate("XLibrary", "Add application"), "add",
         [this] { open_dialog("application_editor", context); });
@@ -326,6 +365,18 @@ void MainWindow::start() {
                             service.settings.value("behavior/startup", "show").toString() == "tray";
     if (!background || !tray.isVisible())
         show_library();
+    if (!QCoreApplication::arguments().contains("--check-startup")) {
+        QTimer::singleShot(0, this, [this] {
+            if (service.updates.is_busy())
+                return;
+            auto *tokens = new GithubTokenStore(service.settings, &service);
+            connect(tokens, &GithubTokenStore::read_finished, &service.updates, &UpdateChecker::check);
+            connect(tokens, &GithubTokenStore::failed, &service, &DesktopService::notify);
+            connect(tokens, &GithubTokenStore::read_finished, tokens, &QObject::deleteLater);
+            connect(tokens, &GithubTokenStore::failed, tokens, &QObject::deleteLater);
+            tokens->read();
+        });
+    }
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {

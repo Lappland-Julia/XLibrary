@@ -1557,6 +1557,12 @@ Applications: %1</source>
         <translation>О программе</translation>
     </message>
     <message>
+        <location filename="../desktop/settings_view.cpp" line="280"/>
+        <location filename="../desktop/settings_view.cpp" line="487"/>
+        <source>Update</source>
+        <translation>Обновление</translation>
+    </message>
+    <message>
         <location filename="../desktop/settings_view.cpp" line="236"/>
         <source>Version </source>
         <translation>Версия </translation>
@@ -1751,8 +1757,8 @@ XLibrary — MIT
         <translation>Проверить наличие обновления</translation>
     </message>
     <message>
-        <source>Checks GitHub Releases on request, including pre-releases. Results are cached for 60 seconds without a token or 5 seconds with a token.</source>
-        <translation>Проверяет выпуски на GitHub по запросу, включая предварительные версии. Результат кэшируется на 60 секунд без токена или на 5 секунд с токеном.</translation>
+        <source>Checks GitHub Releases at startup and on request, including pre-releases. Results are cached for 60 seconds without a token or 5 seconds with a token.</source>
+        <translation>Проверяет выпуски на GitHub при запуске и по запросу, включая предварительные версии. Результат кэшируется на 60 секунд без токена или на 5 секунд с токеном.</translation>
     </message>
     <message>
         <source>Update download progress</source>
@@ -1776,7 +1782,7 @@ XLibrary — MIT
     </message>
     <message>
         <source>You are using the latest available version.</source>
-        <translation>У вас установлена актуальная версия.</translation>
+        <translation>Установлена последняя версия.</translation>
     </message>
     <message>
         <source>No releases with a supported version were found.</source>
@@ -1789,6 +1795,14 @@ XLibrary — MIT
     <message>
         <source>New version available: %1</source>
         <translation>Доступна новая версия: %1</translation>
+    </message>
+    <message>
+        <source>Current version: %1</source>
+        <translation>Текущая версия: %1</translation>
+    </message>
+    <message>
+        <source>Open update settings</source>
+        <translation>Перейти к обновлению</translation>
     </message>
     <message>
         <source>XLibrary update</source>

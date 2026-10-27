@@ -135,7 +135,8 @@ def main():
     parser.add_argument("--build-path", default="cmake-build-linux-release")
     parser.add_argument("--output-path")
     parser.add_argument("--format", choices=("all", "appimage", "deb"), default="all")
-    parser.add_argument("--cache-path", default="build/linux-packaging-cache")
+    cache_home = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+    parser.add_argument("--cache-path", default=str(cache_home / "XLibrary/packaging"))
     options = parser.parse_args()
     if sys.platform != "linux" or platform.machine() not in ("x86_64", "amd64"):
         parser.error("Run this packager on Linux x86_64 (including Ubuntu WSL)")
