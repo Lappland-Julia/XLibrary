@@ -33,65 +33,107 @@ if ((Read-Cache 'CMAKE_PROJECT_NAME') -ne 'XLibrary' -or
     throw 'Build directory must be configured from this XLibrary checkout.'
 }
 $cmake = Read-Cache 'CMAKE_COMMAND'
-# Build может перезапустить configure; обновляем версию и toolchain до выбора имени пакета.
-& $cmake -S $repository -B $build
-if ($LASTEXITCODE -ne 0) { throw 'Release configuration failed.' }
-$cache = Get-Content -LiteralPath (Join-Path $build 'CMakeCache.txt')
-$config = Get-Content -LiteralPath "$build/packaging-config.json" -Raw | ConvertFrom-Json
-$compiler = switch ($config.compiler_id) {
-    'GNU' { 'mingw' }
-    'MSVC' { 'msvc' }
-    default { throw "Unsupported release compiler: $($config.compiler_id)" }
-}
-if ($config.pointer_size -ne '8') { throw 'Distribution requires a Windows x64 build.' }
-if ($compiler -eq 'msvc' -and $config.compiler_architecture -ne 'x64') {
-    throw 'Distribution requires an x64 MSVC target.'
-}
-if ($compiler -eq 'mingw') {
-    $target_machine = & $config.compiler -dumpmachine
-    if ($LASTEXITCODE -ne 0 -or $target_machine -notmatch '^x86_64-.*mingw32$') {
-        throw 'Distribution requires an x86_64 MinGW target.'
+$log = Join-Path $build 'packaging-release.log'
+"Release packaging started at $([DateTime]::UtcNow.ToString('o'))" | Set-Content -LiteralPath $log -Encoding utf8
+function invoke_cmake([string]$step, [string[]]$command_arguments) {
+    "$step (log: $log)" | Tee-Object -FilePath $log -Append
+    & $cmake @command_arguments 2>&1 | Tee-Object -FilePath $log -Append
+    if ($LASTEXITCODE -ne 0) {
+        throw "$step failed (exit $LASTEXITCODE). See $log for the compiler/linker diagnostics."
     }
 }
-$build_type = Read-Cache 'CMAKE_BUILD_TYPE' -Optional
-$configurations = (Read-Cache 'CMAKE_CONFIGURATION_TYPES' -Optional) -split ';'
-if ($build_type -ne 'Release' -and 'Release' -notin $configurations) {
-    throw 'Use a Release build directory or a multi-config generator with Release.'
-}
-if ((Read-Cache 'XLIBRARY_NATIVE_CPU') -ne 'OFF') { throw 'Distribution requires XLIBRARY_NATIVE_CPU=OFF.' }
-$compiler_bin = Split-Path $config.compiler -Parent
-$qt = [IO.Path]::GetFullPath((Join-Path (Read-Cache 'Qt6_DIR') '../../..'))
-$qt_version = $config.qt_version
-$version = Read-Cache 'CMAKE_PROJECT_VERSION'
-$source_manifest = Get-Content -LiteralPath $QtSourceManifest -Raw | ConvertFrom-Json -AsHashtable
-if (-not $source_manifest.ContainsKey($qt_version)) {
-    throw "Add verified Qt $qt_version source archive SHA256 values to -QtSourceManifest before packaging."
-}
-if ($Installer) {
-    if (-not $InnoCompiler) {
-        $iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
-        if ($iscc) { $InnoCompiler = $iscc.Source }
-    }
-    if (-not $InnoCompiler -or -not (Test-Path -LiteralPath $InnoCompiler -PathType Leaf)) {
-        throw 'Install Inno Setup 6.3+ and pass -InnoCompiler or put ISCC.exe on PATH.'
+
+# Проверяем доступ к EXE до пересборки: запущенное приложение запрещает линкеру его заменить.
+$runtime_directory = Read-Cache 'CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE' -Optional
+if (-not $runtime_directory) {
+    $runtime_directory = Read-Cache 'CMAKE_RUNTIME_OUTPUT_DIRECTORY' -Optional
+    if ($runtime_directory -and (Read-Cache 'CMAKE_CONFIGURATION_TYPES' -Optional)) {
+        $runtime_directory = Join-Path $runtime_directory 'Release'
     }
 }
-if (-not $OutputPath) { $OutputPath = "release/v$version-pre-release-$compiler" }
-$output = Resolve-RepositoryPath $OutputPath
-if (Test-Path -LiteralPath $output) { throw "Output already exists; choose a new -OutputPath: $output" }
-$package_name = "XLibrary-$version-pre-release-windows-x64-$compiler-portable"
-$stage = Join-Path $repository "build/release-$([guid]::NewGuid().ToString('N'))"
-$package = Join-Path $stage $package_name
+if (-not $runtime_directory) {
+    $runtime_directory = if (Read-Cache 'CMAKE_CONFIGURATION_TYPES' -Optional) { 'Release' } else { '.' }
+}
+$executable = Join-Path ([IO.Path]::GetFullPath($runtime_directory, $build)) 'XLibrary.exe'
+if (Test-Path -LiteralPath $executable -PathType Leaf) {
+    try {
+        $executable_stream = [IO.File]::Open($executable, [IO.FileMode]::Open, [IO.FileAccess]::Write,
+            [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)
+        $executable_stream.Dispose()
+    } catch {
+        throw "Cannot replace $executable. Close XLibrary launched from this build directory, including its tray icon, and retry. If it is already closed, check file permissions. $($_.Exception.Message)"
+    }
+}
+
 $saved_path = $env:PATH
 $success = $false
+$stage = ''
 
 try {
-    # PATH меняется в процессе PowerShell, а не передаётся списком через MSBuild.
-    $env:PATH = "$compiler_bin;$qt/bin;$saved_path"
-    & $cmake --build $build --config Release --target XLibrary --parallel 4
-    if ($LASTEXITCODE -ne 0) { throw 'Release build failed.' }
-    & $cmake --install $build --config Release --prefix $package
-    if ($LASTEXITCODE -ne 0) { throw 'Qt deployment failed.' }
+    # Проверка IPO/LTO при configure тоже запускает компилятор и требует его DLL в PATH.
+    $config = Get-Content -LiteralPath "$build/packaging-config.json" -Raw | ConvertFrom-Json
+    $compiler_bin = Split-Path $config.compiler -Parent
+    $qt = [IO.Path]::GetFullPath((Join-Path (Read-Cache 'Qt6_DIR') '../../..'))
+    $cmake_bin = Split-Path $cmake -Parent
+    $build_paths = @($compiler_bin, "$qt/bin", $cmake_bin)
+    # Visual Studio выбирает MSBuild при сборке и может не сохранять его путь в кэше.
+    $make_program = Read-Cache 'CMAKE_MAKE_PROGRAM' -Optional
+    if ($make_program) {
+        $generator_bin = Split-Path $make_program -Parent
+        if ($generator_bin) { $build_paths += $generator_bin }
+    }
+    $env:PATH = ($build_paths + $saved_path) -join ';'
+    # Build может перезапустить configure; обновляем версию до выбора имени пакета.
+    invoke_cmake -step 'Release configuration' -command_arguments @('-S', $repository, '-B', $build)
+    $cache = Get-Content -LiteralPath (Join-Path $build 'CMakeCache.txt')
+    $config = Get-Content -LiteralPath "$build/packaging-config.json" -Raw | ConvertFrom-Json
+    $compiler = switch ($config.compiler_id) {
+        'GNU' { 'mingw' }
+        'MSVC' { 'msvc' }
+        default { throw "Unsupported release compiler: $($config.compiler_id)" }
+    }
+    if ($config.pointer_size -ne '8') { throw 'Distribution requires a Windows x64 build.' }
+    if ($compiler -eq 'msvc' -and $config.compiler_architecture -ne 'x64') {
+        throw 'Distribution requires an x64 MSVC target.'
+    }
+    if ($compiler -eq 'mingw') {
+        $target_machine = & $config.compiler -dumpmachine
+        if ($LASTEXITCODE -ne 0 -or $target_machine -notmatch '^x86_64-.*mingw32$') {
+            throw 'Distribution requires an x86_64 MinGW target.'
+        }
+    }
+    $build_type = Read-Cache 'CMAKE_BUILD_TYPE' -Optional
+    $configurations = (Read-Cache 'CMAKE_CONFIGURATION_TYPES' -Optional) -split ';'
+    if ($build_type -ne 'Release' -and 'Release' -notin $configurations) {
+        throw 'Use a Release build directory or a multi-config generator with Release.'
+    }
+    if ((Read-Cache 'XLIBRARY_NATIVE_CPU') -ne 'OFF') { throw 'Distribution requires XLIBRARY_NATIVE_CPU=OFF.' }
+    $qt_version = $config.qt_version
+    $version = Read-Cache 'CMAKE_PROJECT_VERSION'
+    $source_manifest = Get-Content -LiteralPath (Resolve-RepositoryPath $QtSourceManifest) -Raw |
+        ConvertFrom-Json -AsHashtable
+    if (-not $source_manifest.ContainsKey($qt_version)) {
+        throw "Add verified Qt $qt_version source archive SHA256 values to -QtSourceManifest before packaging."
+    }
+    if ($Installer) {
+        if (-not $InnoCompiler) {
+            $iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+            if ($iscc) { $InnoCompiler = $iscc.Source }
+        }
+        if (-not $InnoCompiler -or -not (Test-Path -LiteralPath $InnoCompiler -PathType Leaf)) {
+            throw 'Install Inno Setup 6.3+ and pass -InnoCompiler or put ISCC.exe on PATH.'
+        }
+    }
+    if (-not $OutputPath) { $OutputPath = "release/v$version-pre-release-$compiler" }
+    $output = Resolve-RepositoryPath $OutputPath
+    if (Test-Path -LiteralPath $output) { throw "Output already exists; choose a new -OutputPath: $output" }
+    $package_name = "XLibrary-$version-pre-release-windows-x64-$compiler-portable"
+    $stage = Join-Path $repository "build/release-$([guid]::NewGuid().ToString('N'))"
+    $package = Join-Path $stage $package_name
+    invoke_cmake -step 'Release build' -command_arguments @('--build', $build, '--config', 'Release',
+        '--target', 'XLibrary', '--parallel', '4')
+    invoke_cmake -step 'Qt deployment' -command_arguments @('--install', $build, '--config', 'Release',
+        '--prefix', $package)
 
     $licenses = Join-Path $package 'licenses'
     New-Item -ItemType Directory -Path $licenses -Force | Out-Null
@@ -253,6 +295,14 @@ This pre-release has no digital signature. See licenses/, sources/ and THIRD_PAR
     Write-Output "Release prepared: $output"
 } finally {
     $env:PATH = $saved_path
-    if ($success) { Remove-Item -LiteralPath $stage -Recurse -Force }
-    else { Write-Warning "Packaging failed. Staging files, if created, remain at $stage" }
+    if ($stage -and (Test-Path -LiteralPath $stage -PathType Container)) {
+        if ($success) {
+            $resolved_stage = (Resolve-Path -LiteralPath $stage).Path
+            $stage_root = (Resolve-Path -LiteralPath "$repository/build").Path + [IO.Path]::DirectorySeparatorChar
+            if (-not $resolved_stage.StartsWith($stage_root, [StringComparison]::OrdinalIgnoreCase)) {
+                throw "Refusing to remove staging outside $stage_root"
+            }
+            Remove-Item -LiteralPath $resolved_stage -Recurse -Force
+        } else { Write-Warning "Packaging failed. Staging files remain at $stage" }
+    }
 }

@@ -6,8 +6,8 @@
 
 ## Общая упаковка выпуска из Windows
 
-После настройки Windows Release и Linux Release в WSL запустите PowerShell 7
-из корня репозитория:
+После настройки Windows Release запустите Docker Desktop с Linux containers
+и PowerShell 7 из корня репозитория. Linux-пакеты собираются в Debian 13:
 
 ```powershell
 pwsh -File ./packaging/package_project.ps1
@@ -15,19 +15,34 @@ pwsh -File ./packaging/package_project.ps1
 pwsh -File ./packaging/package_project.ps1 -WhatIf
 # Только Windows или Linux:
 pwsh -File ./packaging/package_project.ps1 -Platform Windows
-pwsh -File ./packaging/package_project.ps1 -Platform Linux -WslDistribution Debian
+pwsh -File ./packaging/package_project.ps1 -Platform Linux
+# Альтернатива: заранее настроенный Debian 13 в WSL:
+pwsh -File ./packaging/package_project.ps1 -Platform Linux -LinuxEnvironment WSL -WslDistribution Debian
 ```
 
 Скрипт вызывает существующие упаковщики: Windows получает portable ZIP и
-Inno Setup EXE, Linux — AppImage и DEB. По умолчанию используются настроенные
-каталоги `cmake-build-release` и `cmake-build-linux-release`; другие задаются
-через `-WindowsBuildPath` и `-LinuxBuildPath`. Linux-путь может быть абсолютным
-путём WSL; относительные пути отсчитываются от корня репозитория. Без
-`-WslDistribution` используется дистрибутив WSL по умолчанию. Его зависимости
-и ABI определяют совместимость Linux-пакетов, как описано ниже.
-Перед Windows-сборкой скрипт проверяет доступность `pkg-config` и
-`libsecret-1` в выбранном WSL. В Debian/Ubuntu недостающие пакеты
-устанавливаются командой `sudo apt-get install pkg-config libsecret-1-dev`.
+Inno Setup EXE, Linux — AppImage и DEB. Для Windows используется настроенный
+`cmake-build-release`, другой каталог задаётся через `-WindowsBuildPath`.
+По умолчанию `-LinuxEnvironment Docker`: target `linux-packaging` в корневом
+`Dockerfile` создаёт образ `xlibrary-linux-packaging:debian13` с системными
+Qt 6.8.2 и glibc 2.41. Проверка Docker и подготовка образа выполняются до
+Windows-сборки. Первая подготовка загружает Debian и пакеты через APT.
+Исходники подключаются к контейнеру только для чтения, сборка выполняется
+в новом `/build` внутри контейнера; кэш сборки Ubuntu не используется.
+Результаты записываются в каталог выпуска, а инструменты и исходники Qt
+сохраняются в Docker volume `xlibrary-linux-packaging-cache-debian13`.
+После успеха контейнер удаляется, образ и volume остаются для повторной упаковки.
+При сбое контейнер сохраняется вместе с `/build` и `/tmp`; сообщение содержит
+его имя для `docker logs` и `docker cp`. После диагностики удалите этот
+контейнер командой `docker container rm <имя>`.
+
+Для `-LinuxEnvironment WSL` нужен отдельный Debian 13 с настроенным Release
+и системным Qt 6.8.2. Только в этом режиме используются `-WslDistribution`
+и `-LinuxBuildPath` (по умолчанию `cmake-build-linux-release`). Linux-путь
+может быть абсолютным путём WSL; относительный отсчитывается от корня
+репозитория. Без `-WslDistribution` проверяется дистрибутив WSL по умолчанию.
+Неподходящий дистрибутив или настроенный Qt отклоняется до Windows-сборки.
+Также нужны `pkg-config` и `libsecret-1-dev`, как в командах ниже.
 
 Результат — `release/v<версия из VERSION>/windows-mingw/` (или `windows-msvc/`),
 `linux-x86_64/` и **один** `SHA256SUMS.txt` в корне выпуска. Манифест содержит
@@ -237,6 +252,15 @@ cmake --build build-msvc --config Release --parallel 4
 ```
 
 Скрипт сам собирает Release, выполняет install в новой staging-папке, добавляет runtime и лицензии, проверяет запуск и создаёт ZIP. У MSVC он копирует app-local CRT из `VCToolsRedistDir/x64/Microsoft.VC143.CRT`; вне developer shell передайте `-MsvcRuntimePath <каталог CRT>`. Для MinGW пути DLL запрашиваются у **настроенного** `g++.exe` через `-print-file-name`. Лицензии ищутся в `licenses`, `share/doc`, `share/licenses` выбранного toolchain; для другой раскладки передайте `-CompilerLicensePath <каталог лицензий>`. Нужны как минимум `COPYING3`, `COPYING.RUNTIME` и применимые notices MinGW-w64/winpthreads. Отсутствующие обязательные файлы останавливают упаковку.
+
+Перед упаковкой завершите XLibrary, если запустили его из выбранного каталога
+сборки, включая выход через меню трея. Windows блокирует замену работающего
+`XLibrary.exe`; упаковщик проверяет доступ к файлу до конфигурации и сборки.
+Установленная или portable-копия в другом каталоге не мешает сборке.
+Скрипт подготавливает `PATH` выбранного toolchain, Qt, CMake и генератора
+до конфигурации, включая проверку IPO/LTO. Вывод configure/build/install
+сохраняется в `<BuildPath>/packaging-release.log`; при ошибке сообщение
+содержит этап, код возврата и путь к логу. `PATH` восстанавливается при выходе.
 
 По умолчанию результат — `release/v0.2.0-pre-release-msvc/` или `release/v0.2.0-pre-release-mingw/`:
 
