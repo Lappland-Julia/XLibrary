@@ -261,11 +261,18 @@ Get-FileHash ./release/v0.2.0-pre-release-mingw/*-portable.zip -Algorithm SHA256
 4. Установите setup.exe без прав администратора. В `{app}` не должно быть `portable.flag`. Установленная версия сохраняет прежние пути: БД `%LOCALAPPDATA%/XLibrary/xlibrary.db`, настройки `%LOCALAPPDATA%/XLibrary/XLibrary/settings.ini` (Qt AppLocalDataLocation). Portable-профиль от них независим. Проверяйте с резервной копией существующих данных.
 5. Повторите проверку сохранения и перезапуска, обновите установку и удалите её. Данные пользовательского профиля должны сохраниться. Схема БД этой задачей не меняется; автоматического переноса между portable и installed нет. Для переноса остановите приложение, сделайте резервную копию и копируйте БД и настройки в соответствующие пути вручную.
 
-CI разделён на три проверки компиляции (MSVC Debug/Release, MinGW Release) и два отдельных package jobs. Пакеты проходят тот же скрипт, затем отдельно распаковываются ZIP и проверяются хеш и запуск. Inno Setup в обычном CI не вызывается; интерактивные сценарии установки, сохранения после перезапуска и отказы ACL остаются ручной проверкой на Windows.
+CI собирает MSVC и MinGW в Debug/Release, GCC и Clang в Debug/Release.
+MSVC Release проходит `cmake --install --config Release`, проверку установленных
+Qt DLL и запуск без Qt SDK в `PATH`, из каталога с Unicode и пробелами.
+Это проверка CMake install с системным CRT runner, а не автономного portable ZIP
+или Inno Setup. Linux AppImage и DEB собираются и проверяются отдельным job.
+Windows ZIP и Inno Setup, интерактивные сценарии установки, сохранения после
+перезапуска и отказы ACL остаются ручной проверкой. События, обязательные checks,
+кэш и ограничения описаны в [CI/CD](.github/CI.md).
 
 ## GitHub pre-release
 
-1. Дождитесь всех checks PR, включая CodeQL, clang-format, actionlint и оба package jobs. Просмотрите diff и `build-info.json`.
+1. Дождитесь всех checks PR, включая CodeQL, clang-format, actionlint, Windows install smoke test и Linux package job. Просмотрите diff и `build-info.json` Linux-пакетов; Windows-пакеты соберите и проверьте отдельно.
 2. Выполните ручную проверку выше для ZIP и установщика, включая обновление существующей установки. Сохраните результаты и проверьте отсутствие секретов, сертификатов и локальных путей.
 3. С чистого дерева нужного commit соберите публичные файлы выбранного toolchain, сохраните ZIP, setup.exe и SHA256SUMS.txt. CI artifacts — тестовые пакеты, они не публикуются автоматически.
 4. После отдельного решения о выпуске создайте тег версии и GitHub Release с отметкой **pre-release**, описанием проверенных ОС, архитектур и ограничений и приложенными файлами. Сборка и PR сами не создают Release и не выполняют merge.
