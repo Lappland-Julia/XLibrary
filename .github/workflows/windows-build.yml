@@ -1,17 +1,17 @@
 name: Windows Build
 
 on:
-  push:
-    branches: [main, linux]
   pull_request:
+    branches: [main]
   merge_group:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -21,7 +21,7 @@ jobs:
   windows-build:
     name: windows-${{ matrix.compiler }}-${{ matrix.configuration }}
     runs-on: windows-2022
-    timeout-minutes: 30
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -38,6 +38,10 @@ jobs:
             configuration: Release
             qt_arch: win64_mingw
             tools: tools_mingw1310,qt.tools.win64_mingw1310
+          - compiler: mingw
+            configuration: Debug
+            qt_arch: win64_mingw
+            tools: tools_mingw1310,qt.tools.win64_mingw1310
 
     defaults:
       run:
@@ -48,6 +52,22 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+
+      - name: Check PowerShell syntax
+        if: matrix.compiler == 'msvc' && matrix.configuration == 'Release'
+        run: |
+          $failed = $false
+          foreach ($file in (git ls-files -- '*.ps1')) {
+            $tokens = $null
+            $parse_errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Join-Path $PWD $file), [ref]$tokens, [ref]$parse_errors) | Out-Null
+            foreach ($parse_error in $parse_errors) {
+              Write-Output "$($file):$($parse_error.Extent.StartLineNumber): $($parse_error.Message)"
+              $failed = $true
+            }
+          }
+          if ($failed) { throw 'PowerShell syntax check failed.' }
 
       - name: Set up MSVC
         if: matrix.compiler == 'msvc'
@@ -83,8 +103,17 @@ jobs:
         env:
           BUILD_CONFIGURATION: ${{ matrix.configuration }}
         run: |
-          cmake --build build --config $env:BUILD_CONFIGURATION --parallel 2
+          cmake --build build --config $env:BUILD_CONFIGURATION --parallel 4
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: MSVC Release install smoke test
+        if: matrix.compiler == 'msvc' && matrix.configuration == 'Release'
+        timeout-minutes: 2
+        run: |
+          $install_path = Join-Path $env:RUNNER_TEMP 'XLibrary установка с пробелами'
+          cmake --install build --config Release --prefix $install_path
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./.github/scripts/check_install.ps1 -InstallPath $install_path
 
       - name: Upload failure diagnostics
         if: failure()
@@ -94,5 +123,6 @@ jobs:
           path: |
             build/CMakeCache.txt
             build/CMakeFiles/CMakeConfigureLog.yaml
+            build/install-check/
           if-no-files-found: ignore
           retention-days: 7

@@ -10,6 +10,16 @@
   },
   "rules": [
     {
+      "type": "pull_request",
+      "parameters": {
+        "required_approving_review_count": 0,
+        "dismiss_stale_reviews_on_push": true,
+        "require_code_owner_review": false,
+        "require_last_push_approval": false,
+        "required_review_thread_resolution": true
+      }
+    },
+    {
       "type": "required_status_checks",
       "parameters": {
         "strict_required_status_checks_policy": true,
@@ -18,7 +28,15 @@
           {"context": "actionlint"},
           {"context": "windows-msvc-Release"},
           {"context": "windows-msvc-Debug"},
-          {"context": "windows-mingw-Release"}
+          {"context": "windows-mingw-Release"},
+          {"context": "windows-mingw-Debug"},
+          {"context": "linux-debug"},
+          {"context": "linux-release"},
+          {"context": "linux-clang-debug"},
+          {"context": "linux-clang-release"},
+          {"context": "linux-AppImage-and-DEB"},
+          {"context": "Analyze (actions)"},
+          {"context": "Analyze (c-cpp)"}
         ]
       }
     }

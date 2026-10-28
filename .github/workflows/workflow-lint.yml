@@ -1,17 +1,17 @@
 name: Workflow Lint
 
 on:
-  push:
-    branches: [main]
   pull_request:
+    branches: [main]
   merge_group:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -35,3 +35,22 @@ jobs:
           echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $archive" | sha256sum --check
           tar -xzf "$archive" -C "$RUNNER_TEMP" actionlint
           "$RUNNER_TEMP/actionlint" -color
+
+      - name: Check packaging Python syntax
+        run: python3 -m compileall -q packaging
+
+      - name: Validate CMake presets
+        run: cmake --list-presets=all
+
+      - name: Validate JSON configuration
+        run: |
+          python3 - <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+
+          files = subprocess.check_output(["git", "ls-files", "-z", "--", "*.json"]).decode().split("\0")
+          for name in filter(None, files):
+              json.loads(Path(name).read_text(encoding="utf-8"))
+              print(f"Valid JSON: {name}")
+          PY
