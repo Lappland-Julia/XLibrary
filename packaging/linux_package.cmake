@@ -1,6 +1,15 @@
 # CPack выполняет этот раздел только при явном создании пакета.
 if(XLIBRARY_CPACK_PROJECT_CONFIG)
     if(CPACK_GENERATOR STREQUAL "DEB")
+        # Системный Qt из testing/unstable тоже принадлежит dpkg, но несовместим с базой выпуска.
+        if(CPACK_XLIBRARY_QT_VERSION VERSION_GREATER "6.8.2")
+            message(FATAL_ERROR
+                    "DEB packaging for Debian 13 requires Qt <= 6.8.2; "
+                    "this build uses Qt ${CPACK_XLIBRARY_QT_VERSION}. "
+                    "Reconfigure and rebuild in a clean build directory on Debian 13 "
+                    "with its system Qt 6.8.2, or package this build as AppImage. "
+                    "Do not lower the generated package dependencies manually.")
+        endif()
         if(NOT CPACK_XLIBRARY_QT_LIBRARY_TYPE STREQUAL "SHARED_LIBRARY")
             message(FATAL_ERROR "DEB packaging requires shared system Qt libraries.")
         endif()
@@ -55,6 +64,7 @@ foreach(xlibrary_qt_module IN ITEMS Core Gui Widgets Concurrent Network DBus)
     list(APPEND CPACK_XLIBRARY_QT_LIBRARIES "${xlibrary_qt_library}")
 endforeach()
 get_target_property(CPACK_XLIBRARY_QT_LIBRARY_TYPE Qt6::Core TYPE)
+set(CPACK_XLIBRARY_QT_VERSION "${Qt6_VERSION}")
 set(CPACK_PROJECT_CONFIG_FILE "${CMAKE_CURRENT_BINARY_DIR}/linux-cpack-project.cmake")
 file(WRITE "${CPACK_PROJECT_CONFIG_FILE}"
         "set(XLIBRARY_CPACK_PROJECT_CONFIG ON)\ninclude([==[${CMAKE_CURRENT_LIST_FILE}]==])\n")
