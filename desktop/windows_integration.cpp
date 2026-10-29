@@ -261,6 +261,7 @@ QImage desktop_platform::application_icon(const QString &path) {
 app_record desktop_platform::resolve_application(const QString &path) {
     const ComScope com;
     app_record result;
+    result.discovery_source = path;
     result.path = QFileInfo(path).absoluteFilePath();
     if (QFileInfo(path).suffix().compare("lnk", Qt::CaseInsensitive) == 0) {
         IShellLinkW *raw_link = nullptr;

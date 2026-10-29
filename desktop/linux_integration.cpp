@@ -1041,6 +1041,7 @@ QImage desktop_platform::application_icon(const QString &path) {
 
 app_record desktop_platform::resolve_application(const QString &path) {
     app_record result;
+    result.discovery_source = path;
     result.path = absolute_path(path);
     const QFileInfo info(result.path);
     if (!info.isFile())

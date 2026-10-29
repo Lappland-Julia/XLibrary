@@ -31,6 +31,7 @@ struct app_record {
     bool available = true;
     bool running = false;
     QString new_instance_error;
+    QString discovery_source;
     qint64 last_launch = 0;
 };
 

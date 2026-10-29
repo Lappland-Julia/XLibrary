@@ -473,7 +473,8 @@ catalog_import_result CatalogStore::import_records(const QVector<app_record> &re
         } catch (const std::invalid_argument &error) {
             if (!issues)
                 throw;
-            issues->append(discovery_issue{record.path, QString::fromUtf8(error.what())});
+            issues->append(discovery_issue{record.discovery_source.isEmpty() ? record.path : record.discovery_source,
+                                           QString::fromUtf8(error.what())});
         }
     }
     Transaction transaction(database.get_connection());
@@ -496,7 +497,7 @@ catalog_import_result CatalogStore::import_records(const QVector<app_record> &re
             ++result.duplicates;
             if (issues)
                 issues->append(discovery_issue{
-                    record.path,
+                    record.discovery_source.isEmpty() ? record.path : record.discovery_source,
                     names.contains(record.name)
                         ? QCoreApplication::translate("XLibrary",
                                                       "The library already contains an entry with this name.")
@@ -508,7 +509,7 @@ catalog_import_result CatalogStore::import_records(const QVector<app_record> &re
                 ++result.duplicates;
                 if (issues)
                     issues->append(discovery_issue{
-                        record.path,
+                        record.discovery_source.isEmpty() ? record.path : record.discovery_source,
                         QCoreApplication::translate("XLibrary", "The entry already exists in the database."),
                         discovery_issue_kind::duplicate});
                 continue;
