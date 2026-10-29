@@ -284,16 +284,16 @@ QWidget *update_page(const ui_context &context, QWidget *) {
     auto *card_layout = new QVBoxLayout(card);
     card_layout->setContentsMargins(24, 24, 24, 24);
     card_layout->setSpacing(12);
-    // Проверяющий объект и его кэш живут дольше окна настроек.
+    // The checker and its cache outlive the settings window.
     auto *updates = &static_cast<DesktopService *>(context.service)->updates;
     auto request_started = std::make_shared<bool>(false);
     QObject::connect(widget, &QObject::destroyed, updates, [updates, request_started] {
-        // Закрытие настроек не отменяет автоматическую проверку при запуске.
+        // Closing settings does not cancel the automatic startup check.
         if (*request_started)
             updates->cancel();
     });
     auto *tokens = new GithubTokenStore(*context.settings, context.service);
-    // libsecret завершает запрос асинхронно; закрытие окна не должно уничтожать активный job.
+    // libsecret completes requests asynchronously; closing the window must not destroy an active job.
     QObject::connect(widget, &QObject::destroyed, tokens, [tokens] {
         if (!tokens->is_busy()) {
             tokens->deleteLater();
@@ -317,7 +317,7 @@ QWidget *update_page(const ui_context &context, QWidget *) {
     auto *token_buttons = new QHBoxLayout;
     auto *save_token = button(QCoreApplication::translate("XLibrary", "Save token"));
     auto *remove_token = button(QCoreApplication::translate("XLibrary", "Delete token"));
-    // Enter в поле токена не должен сохранять его вместо обычного сохранения настроек.
+    // Pressing Enter in the token field must not save the token instead of the regular settings.
     save_token->setAutoDefault(false);
     remove_token->setAutoDefault(false);
     token_buttons->addWidget(save_token);
@@ -395,7 +395,7 @@ QWidget *update_page(const ui_context &context, QWidget *) {
     QObject::connect(tokens, &GithubTokenStore::read_finished, widget, [=](const QString &value) {
         const bool was_busy = updates->is_busy();
         updates->check(value);
-        // Чтение токена может завершиться уже после запуска фонового запроса.
+        // Token retrieval may finish after the background request has started.
         *request_started = !was_busy && updates->is_busy();
     });
     QObject::connect(updates, &UpdateChecker::busy_changed, widget, [=] {

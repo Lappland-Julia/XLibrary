@@ -33,7 +33,7 @@ SelectionButton::SelectionButton(const QString &text, QWidget *parent) : QPushBu
 void SelectionButton::paintEvent(QPaintEvent *) {
     QStyleOptionButton option;
     initStyleOption(&option);
-    // Отрисовка через QStyle сохраняет поддержку стилей, добавленных плагинами.
+    // Drawing through QStyle preserves support for plugin-provided styles.
     if (!(option.state & QStyle::State_KeyboardFocusChange))
         option.state &= ~QStyle::State_HasFocus;
     const auto state = option.state;

@@ -158,7 +158,7 @@ MainWindow::MainWindow(DesktopService &service) : service(service), hotkey(this)
 }
 
 MainWindow::~MainWindow() {
-    // Фабрики и виджеты плагинов должны исчезнуть до выгрузки их кода.
+    // Destroy plugin factories and widgets before unloading their code.
     delete takeCentralWidget();
     for (auto *dialog : findChildren<QDialog *>(QString{}, Qt::FindDirectChildrenOnly))
         delete dialog;
@@ -343,7 +343,7 @@ void MainWindow::load_plugins() {
 }
 
 void MainWindow::update_layout() {
-    // Пользовательская shell плагина сама управляет своей компоновкой.
+    // A custom plugin shell manages its own layout.
     if (centralWidget())
         for (auto *splitter : centralWidget()->findChildren<QSplitter *>("library_splitter"))
             if (auto *library = dynamic_cast<LibrarySplitter *>(splitter))

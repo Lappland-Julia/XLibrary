@@ -8,12 +8,12 @@ if(NOT XLIBRARY_RELEASE_VERSION MATCHES "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0
 endif()
 project(XLibrary VERSION "${XLIBRARY_RELEASE_VERSION}" LANGUAGES C CXX)
 
-# Использовать время распаковки файлов загружаемых архивов.
+# Use extraction timestamps for files from downloaded archives.
 if(POLICY CMP0135)
     cmake_policy(SET CMP0135 NEW)
 endif()
 
-# Учитывать общие флаги проекта при проверке поддержки IPO/LTO.
+# Honor shared project flags when checking IPO/LTO support.
 if(POLICY CMP0138)
     cmake_policy(SET CMP0138 NEW)
 endif()
@@ -25,19 +25,19 @@ elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 
 # ------------------------------------------------------------
-# Стандарт языка
+# Language standard
 # ------------------------------------------------------------
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Используется clang-tidy и другими инструментами.
-# Поддерживается генераторами Ninja и Makefiles.
+# Used by clang-tidy and other tools.
+# Supported by Ninja and Makefiles generators.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ------------------------------------------------------------
-# Параметры сборки
+# Build options
 # ------------------------------------------------------------
 
 option(XLIBRARY_ENABLE_IPO
@@ -51,7 +51,7 @@ option(XLIBRARY_NATIVE_CPU
 )
 
 # ------------------------------------------------------------
-# Зависимости
+# Dependencies
 # ------------------------------------------------------------
 
 include(FetchContent)
@@ -78,7 +78,7 @@ FetchContent_Declare(sqlite3
 
 FetchContent_MakeAvailable(sqlite3)
 
-# Архив amalgamation содержит исходники без CMake-проекта.
+# The amalgamation archive contains sources without a CMake project.
 add_library(sqlite3 STATIC
         "${sqlite3_SOURCE_DIR}/sqlite3.c"
 )
@@ -93,7 +93,7 @@ target_link_libraries(sqlite3 PUBLIC
 )
 
 # ------------------------------------------------------------
-# Приложение
+# Application
 # ------------------------------------------------------------
 
 add_library(xlibrary_core STATIC
@@ -118,11 +118,23 @@ add_library(xlibrary_core STATIC
 )
 
 if(WIN32)
-    target_sources(xlibrary_core PRIVATE src/RegistryScan.cpp src/RegistryScan.h)
+    target_sources(xlibrary_core PRIVATE
+            src/Windows/Application.cpp
+            src/Windows/Database.cpp
+            src/Windows/Heartbeat.cpp
+            src/Windows/WindowManager.cpp
+            src/Windows/RegistryScan.cpp src/Windows/RegistryScan.h
+    )
     target_compile_definitions(xlibrary_core PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(xlibrary_core PUBLIC version shell32 gdi32 advapi32)
 else()
-    target_sources(xlibrary_core PRIVATE src/linux_process.cpp src/linux_process.h)
+    target_sources(xlibrary_core PRIVATE
+            src/Linux/Application.cpp
+            src/Linux/Database.cpp
+            src/Linux/Heartbeat.cpp
+            src/Linux/WindowManager.cpp
+            src/Linux/LinuxProcessor.cpp src/Linux/LinuxProcessor.h
+    )
 endif()
 target_include_directories(xlibrary_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(xlibrary_core PUBLIC
@@ -168,7 +180,7 @@ if(WIN32)
             OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/xlibrary.ico"
     )
     if(MINGW)
-        # windres через popen некорректно обрабатывает пробелы в пути к препроцессору.
+        # windres via popen mishandles spaces in the preprocessor path.
         set_property(SOURCE assets/application_icon.rc APPEND PROPERTY COMPILE_OPTIONS --use-temp-file)
     endif()
 else()
@@ -196,7 +208,7 @@ if(WIN32)
                 COMPILE_OPTIONS --use-temp-file)
     endif()
 
-    # Метаданные выбранного toolchain нужны только явной упаковке.
+    # The selected toolchain's metadata is needed only for explicit packaging.
     configure_file(packaging/build_config.json.in packaging-config.json @ONLY)
 endif()
 
@@ -209,7 +221,7 @@ endif()
 install(TARGETS XLibrary RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 if(WIN32)
     install(IMPORTED_RUNTIME_ARTIFACTS Qt6::Concurrent RUNTIME DESTINATION .)
-    # Qt развёртывается только при install; CRT добавляет упаковщик из выбранного toolchain.
+    # Deploy Qt only during install; the packager adds the CRT from the selected toolchain.
     qt_generate_deploy_app_script(TARGET XLibrary OUTPUT_SCRIPT xlibrary_deploy_script
             NO_TRANSLATIONS NO_COMPILER_RUNTIME)
     install(SCRIPT "${xlibrary_deploy_script}")
@@ -227,11 +239,11 @@ endif()
 # Release: O2
 # ------------------------------------------------------------
 
-# MSVC также охватывает совместимые с cl компиляторы, например
-# clang-cl. Для них используется /O2.
+# MSVC also covers cl-compatible compilers such as
+# clang-cl. Use /O2 for these compilers.
 #
-# Для GCC и Clang с GNU-интерфейсом используется -O2.
-# Опции цели добавляются после стандартных флагов конфигурации.
+# Use -O2 for GCC and Clang with a GNU-compatible interface.
+# Target options follow the default configuration flags.
 
 foreach(xlibrary_target IN ITEMS XLibrary xlibrary_core sqlite3)
     if(MSVC)
@@ -247,7 +259,7 @@ foreach(xlibrary_target IN ITEMS XLibrary xlibrary_core sqlite3)
 endforeach()
 
 # ------------------------------------------------------------
-# IPO / LTO для Release
+# IPO / LTO for Release
 # ------------------------------------------------------------
 
 if(XLIBRARY_ENABLE_IPO)
@@ -272,11 +284,11 @@ if(XLIBRARY_ENABLE_IPO)
 endif()
 
 # ------------------------------------------------------------
-# Оптимизация под CPU компьютера сборки
+# Optimize for the build computer's CPU
 # ------------------------------------------------------------
 
-# Для публично распространяемых бинарников оставлять OFF.
-# Полученный код может не работать на другом процессоре.
+# Leave OFF for publicly distributed binaries.
+# The generated code may not run on a different processor.
 
 if(XLIBRARY_NATIVE_CPU)
     if(CMAKE_CROSSCOMPILING)

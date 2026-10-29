@@ -1,5 +1,5 @@
-#ifndef XLIBRARY_LINUX_PROCESS_H
-#define XLIBRARY_LINUX_PROCESS_H
+#ifndef XLIBRARY_LINUX_PROCESSOR_H
+#define XLIBRARY_LINUX_PROCESSOR_H
 
 #include <cstdint>
 #include <filesystem>
@@ -24,4 +24,4 @@ process_identity launch_process(const std::filesystem::path &executable_path, co
 
 } // namespace xlibrary
 
-#endif // XLIBRARY_LINUX_PROCESS_H
+#endif // XLIBRARY_LINUX_PROCESSOR_H

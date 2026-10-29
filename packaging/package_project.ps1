@@ -73,7 +73,7 @@ if ($ReleaseNotes) {
     if (-not (Test-Path -LiteralPath $notes -PathType Leaf)) { throw 'ReleaseNotes must be a file.' }
 }
 
-# Проверяем обе среды до начала длительной сборки.
+# Check both environments before starting the lengthy build.
 if ($build_windows) {
     $windows_build = resolve_repository_path $WindowsBuildPath
     if (-not (Test-Path -LiteralPath "$windows_build/CMakeCache.txt" -PathType Leaf)) {
@@ -132,7 +132,7 @@ if ($build_linux) {
             throw "Linux packaging requires a Linux x86_64 Docker engine; found: $docker_system"
         }
         $docker_image = 'xlibrary-linux-packaging:debian13'
-        # Готовим базу до Windows-сборки; исходники не копируются в образ упаковщика.
+        # Prepare the base before the Windows build; do not copy sources into the packaging image.
         & $docker build --platform linux/amd64 --target linux-packaging --tag $docker_image `
             --file "$repository/Dockerfile" $repository
         if ($LASTEXITCODE -ne 0) { throw 'Cannot prepare the Debian 13 packaging image; check the Docker build output.' }
@@ -180,7 +180,7 @@ if ($build_windows) {
 if ($build_linux) {
     if ($LinuxEnvironment -eq 'Docker') {
         New-Item -ItemType Directory -Path $output -Force | Out-Null
-        # /build остаётся на файловой системе Linux; кэш Ubuntu/WSL не используется.
+        # Keep /build on the Linux filesystem; do not use the Ubuntu/WSL cache.
         $container = "xlibrary-linux-packaging-$([guid]::NewGuid().ToString('N'))"
         & $docker run --name $container --platform linux/amd64 `
             --mount "type=bind,source=$repository,target=/src,readonly" `
@@ -212,7 +212,7 @@ foreach ($relative_path in $package_paths) {
 }
 if ($ReleaseNotes) { Copy-Item -LiteralPath $notes -Destination "$output/RELEASE_NOTES.md" }
 
-# Общий манифест заменяет суммы отдельных платформ и включает также метаданные.
+# The combined manifest replaces per-platform checksums and also includes metadata.
 if ($build_windows) { Remove-Item -LiteralPath "$windows_output/SHA256SUMS.txt" }
 if ($build_linux) { Remove-Item -LiteralPath "$output/linux-x86_64/SHA256SUMS.txt" }
 $manifest_lines = @(Get-ChildItem -LiteralPath $output -Recurse -File -Force | Sort-Object FullName | ForEach-Object {

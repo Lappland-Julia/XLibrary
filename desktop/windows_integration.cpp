@@ -17,7 +17,7 @@
 #include "application_paths.h"
 #include "localization.h"
 #include "platform_integration.h"
-#include "RegistryScan.h"
+#include "Windows/RegistryScan.h"
 
 namespace {
 using unique_handle = std::unique_ptr<void, decltype(&CloseHandle)>;
@@ -32,7 +32,7 @@ bool is_system_application(const QString &path) {
             return true;
     }
 
-    // В WindowsApps есть обычные приложения Microsoft: издатель сам по себе не означает компонент ОС.
+    // WindowsApps also contains regular Microsoft applications; the publisher alone does not imply an OS component.
     for (const auto *folder :
          {&FOLDERID_ProgramFiles, &FOLDERID_ProgramFilesX86, &FOLDERID_ProgramFilesX64, &FOLDERID_LocalAppData}) {
         PWSTR raw_path = nullptr;
@@ -42,7 +42,7 @@ bool is_system_application(const QString &path) {
         CoTaskMemFree(raw_path);
         const bool local = IsEqualGUID(*folder, FOLDERID_LocalAppData);
         if (!local) {
-            // Компоненты Windows находятся также вне каталога самой ОС.
+            // Windows components may also reside outside the OS directory.
             for (const auto *directory : {"Internet Explorer/", "Windows Mail/", "Windows Media Player/",
                                           "Windows Photo Viewer/", "Windows Defender/", "Windows NT/", "WSL/"}) {
                 if (normalized_path.startsWith(root + '/' + directory, Qt::CaseInsensitive))
@@ -76,7 +76,7 @@ bool is_system_application(const QString &path) {
 bool should_import_application(const app_record &record) {
     if (is_system_application(record.path))
         return false;
-    // Имя ярлыка может быть локализовано, а удаление может запускать основной EXE с аргументом.
+    // Shortcut names may be localized, and uninstall commands may run the main EXE with an argument.
     static const QRegularExpression uninstaller_name("^(?:uninstall|uninst|unins[0-9]*)\\.exe$",
                                                      QRegularExpression::CaseInsensitiveOption);
     static const QRegularExpression uninstall_argument(
@@ -294,7 +294,7 @@ app_record desktop_platform::resolve_application(const QString &path) {
                 QCoreApplication::translate("XLibrary", "Could not read the shortcut working directory.")
                     .toStdString());
         result.working_directory = QString::fromWCharArray(buffer);
-        // Непригодный ярлык пропускается при поиске до общей транзакции импорта.
+        // Skip unusable shortcuts during discovery, before the shared import transaction.
         if (!result.working_directory.isEmpty() && !QFileInfo(result.working_directory).isAbsolute()) {
             throw std::invalid_argument(
                 QCoreApplication::translate("XLibrary", "The working directory must be an absolute path.")
@@ -315,7 +315,7 @@ QVector<app_record> desktop_platform::discover(bool registry, bool start_menu, Q
                                                const std::function<void(const discovery_progress &)> &progress) {
     QVector<app_record> result;
     QStringList shortcuts;
-    // Сначала собираем очередь: её размер не меняется во время чтения ярлыков и метаданных EXE.
+    // Build the queue first so its size stays fixed while reading shortcuts and EXE metadata.
     if (progress)
         progress({-1, 0, 0, QCoreApplication::translate("XLibrary", "Preparing the application list…")});
     if (start_menu) {

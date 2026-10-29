@@ -1,59 +1,11 @@
-#ifdef _WIN32
-#include <windows.h>
-#include <tlhelp32.h>
-#endif
-
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
-#include <iterator>
 #include <mutex>
-#include <stdexcept>
-#include <string>
 #include <system_error>
 #include <utility>
 
 #include "Heartbeat.h"
-#ifndef _WIN32
-#include "linux_process.h"
-#endif
-
-#ifdef _WIN32
-namespace {
-using unique_handle = std::unique_ptr<void, decltype(&CloseHandle)>;
-
-std::pair<bool, DWORD> check_process_handle(HANDLE process_handle, const std::wstring &expected_path) {
-    const auto wait_result = WaitForSingleObject(process_handle, 0);
-    if (wait_result == WAIT_OBJECT_0) {
-        return {false, 0};
-    }
-    if (wait_result == WAIT_FAILED) {
-        return {false, GetLastError()};
-    }
-
-    wchar_t process_path[32768]{};
-    DWORD path_length = static_cast<DWORD>(std::size(process_path));
-    if (!QueryFullProcessImageNameW(process_handle, 0, process_path, &path_length)) {
-        const auto error_code = GetLastError();
-        if (WaitForSingleObject(process_handle, 0) == WAIT_OBJECT_0) {
-            return {false, 0};
-        }
-        return {false, error_code};
-    }
-
-    const int comparison = CompareStringOrdinal(process_path, -1, expected_path.c_str(), -1, TRUE);
-    if (comparison == 0) {
-        return {false, GetLastError()};
-    }
-    // Процесс мог завершиться во время чтения пути.
-    const auto final_wait = WaitForSingleObject(process_handle, 0);
-    if (final_wait == WAIT_FAILED) {
-        return {false, GetLastError()};
-    }
-    return {comparison == CSTR_EQUAL && final_wait == WAIT_TIMEOUT, 0};
-}
-}
-#endif
 
 struct Heartbeat::State {
     std::atomic<bool> alive{false};
@@ -62,106 +14,7 @@ struct Heartbeat::State {
 
 Heartbeat::Heartbeat(std::uint32_t process_id, const std::filesystem::path &executable_path)
     : state(std::make_shared<State>()) {
-#ifdef _WIN32
-    const auto expected_name = executable_path.filename().wstring();
-    if (process_id == 0 || expected_name.empty()) {
-        throw std::invalid_argument("Heartbeat requires a nonzero PID and an executable name");
-    }
-    const auto expected_path = std::filesystem::absolute(executable_path).lexically_normal().wstring();
-
-    unique_handle process_handle(OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id),
-                                 &CloseHandle);
-    if (!process_handle) {
-        const auto error_code = GetLastError();
-        if (error_code != ERROR_INVALID_PARAMETER) {
-            throw std::system_error(error_code, std::system_category(), "Cannot open heartbeat process");
-        }
-    }
-
-    auto check_process = [process_handle = std::move(process_handle), expected_name, expected_path]() mutable {
-        if (process_handle) {
-            const auto result = check_process_handle(process_handle.get(), expected_path);
-            if (result.first || result.second != 0) {
-                return result;
-            }
-            process_handle.reset();
-        }
-
-        // Firefox и другие приложения могут передать запуск уже работающему экземпляру.
-        const auto snapshot_handle = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-        if (snapshot_handle == INVALID_HANDLE_VALUE) {
-            return std::pair<bool, DWORD>{false, GetLastError()};
-        }
-        const unique_handle snapshot(snapshot_handle, &CloseHandle);
-        PROCESSENTRY32W entry{};
-        entry.dwSize = sizeof(entry);
-        if (!Process32FirstW(snapshot.get(), &entry)) {
-            const auto error_code = GetLastError();
-            return std::pair<bool, DWORD>{false, error_code == ERROR_NO_MORE_FILES ? 0 : error_code};
-        }
-
-        DWORD check_error = 0;
-        do {
-            const int comparison = CompareStringOrdinal(entry.szExeFile, -1, expected_name.c_str(), -1, TRUE);
-            if (comparison == 0) {
-                return std::pair<bool, DWORD>{false, GetLastError()};
-            }
-            if (comparison != CSTR_EQUAL) {
-                continue;
-            }
-
-            unique_handle candidate(
-                OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, entry.th32ProcessID), &CloseHandle);
-            if (!candidate) {
-                const auto error_code = GetLastError();
-                if (error_code != ERROR_INVALID_PARAMETER) {
-                    check_error = error_code;
-                }
-                continue;
-            }
-
-            const auto [alive, error_code] = check_process_handle(candidate.get(), expected_path);
-            if (alive) {
-                // Удерживаем проверенный дескриптор, чтобы повторное использование PID его не подменило.
-                process_handle = std::move(candidate);
-                return std::pair<bool, DWORD>{true, 0};
-            }
-            if (error_code != 0) {
-                check_error = error_code;
-            }
-        } while (Process32NextW(snapshot.get(), &entry));
-
-        const auto enumeration_error = GetLastError();
-        if (enumeration_error != ERROR_NO_MORE_FILES) {
-            return std::pair<bool, DWORD>{false, enumeration_error};
-        }
-        return std::pair<bool, DWORD>{false, check_error};
-    };
-#else
-    if (process_id == 0 || executable_path.filename().empty()) {
-        throw std::invalid_argument("Heartbeat requires a nonzero PID and an executable name");
-    }
-    const auto expected_path = std::filesystem::weakly_canonical(std::filesystem::absolute(executable_path));
-    std::error_code initial_error;
-    auto identity = xlibrary::read_process_identity(process_id, initial_error);
-    if (initial_error) {
-        throw std::system_error(initial_error, "Cannot open heartbeat process");
-    }
-    auto check_process = [identity, expected_path]() mutable -> std::pair<bool, std::uint32_t> {
-        std::error_code error;
-        if (identity) {
-            if (xlibrary::process_matches(*identity, expected_path, error)) {
-                return {true, 0};
-            }
-            if (error) {
-                return {false, static_cast<std::uint32_t>(error.value())};
-            }
-            identity.reset();
-        }
-        identity = xlibrary::find_process(expected_path, error);
-        return {identity.has_value(), static_cast<std::uint32_t>(error.value())};
-    };
-#endif
+    auto check_process = make_process_checker(process_id, executable_path);
 
     const auto [alive, error_code] = check_process();
     if (error_code != 0) {

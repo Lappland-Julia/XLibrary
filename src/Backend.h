@@ -8,7 +8,7 @@
 #include "Heartbeat.h"
 #include "Manager.h"
 #ifdef _WIN32
-#include "RegistryScan.h"
+#include "Windows/RegistryScan.h"
 #endif
 #include "WindowManager.h"
 

@@ -76,7 +76,7 @@ protected:
 
     void resizeEvent(QResizeEvent *event) override {
         QWidget::resizeEvent(event);
-        // Содержимое сохраняет полную высоту, а родитель плавно открывает его без сжатия текста.
+        // Content retains its full height while the parent reveals it smoothly without compressing the text.
         contents->setGeometry(0, spacing, width(), preferred_height() - spacing);
         update_height();
     }
@@ -127,7 +127,7 @@ public:
 protected:
     void paintEvent(QPaintEvent *) override {
         QPainter painter(this);
-        // Непрозрачный фон сохраняет тон поверхности во время перехода.
+        // An opaque background preserves the surface color during transitions.
         painter.fillRect(rect(), palette().window());
         painter.setOpacity(opacity);
         painter.drawPixmap(rect(), snapshot);
@@ -258,7 +258,7 @@ inline void open_dialog(const QString &id, ui_context context) {
     }
     auto *widget = context.registry->create(id, context, context.window);
     if (auto *dialog = qobject_cast<QDialog *>(widget)) {
-        // Ограничение действует и для заменяемых плагинами диалогов.
+        // This limit also applies to dialogs replaced by plugins.
         const auto available = dialog->screen()->availableGeometry().size() - QSize(32, 64);
         const auto size_key = "dialogs/" + id + "/size";
         const auto saved = context.settings->value(size_key).toSize();

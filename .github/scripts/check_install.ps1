@@ -25,7 +25,7 @@ $start_info.WorkingDirectory = [IO.Path]::GetTempPath()
 $start_info.UseShellExecute = $false
 $start_info.RedirectStandardOutput = $true
 $start_info.RedirectStandardError = $true
-# Qt должен загружаться из install, а не из SDK или каталога сборки.
+# Qt must load from the install tree, not from the SDK or build directory.
 $start_info.Environment['PATH'] = "$env:SystemRoot/System32;$env:SystemRoot"
 foreach ($name in @($start_info.Environment.Keys)) {
     if ($name -match '^(QT_|QML|QTDIR$)') { $start_info.Environment.Remove($name) | Out-Null }

@@ -4,7 +4,7 @@
 #include <QPushButton>
 #include <QVariantAnimation>
 
-// Общий элемент выбора для штатных групп и областей, добавляемых плагинами.
+// Shared selection control for built-in groups and plugin-provided sections.
 class SelectionButton : public QPushButton {
     QVariantAnimation animation;
     qreal selection_opacity = 0;

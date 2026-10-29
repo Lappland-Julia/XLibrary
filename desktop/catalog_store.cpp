@@ -109,7 +109,7 @@ CatalogStore::CatalogStore(const QString &database_path) : database(filesystem_p
         has_desktop = schema.next();
     }
     if (!has_desktop) {
-        // Резервная копия через SQLite учитывает журнал и не меняет исходные таблицы.
+        // SQLite backup accounts for the journal without modifying the source tables.
         auto backup_path = database.get_file_path();
         backup_path += ".before-desktop.bak";
         if (std::filesystem::exists(backup_path)) {
@@ -422,7 +422,7 @@ catalog_import_result CatalogStore::import_records(const QVector<app_record> &re
         }
     }
     if (control) {
-        // Единственная граница отмены: запрос до неё откатывает всю транзакцию.
+        // The only cancellation boundary: a request before this point rolls back the entire transaction.
         auto expected = discovery_phase::running;
         if (!control->phase.compare_exchange_strong(expected, discovery_phase::committing))
             throw DiscoveryCancelled();

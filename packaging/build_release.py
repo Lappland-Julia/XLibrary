@@ -78,22 +78,22 @@ def build_appimage(repository, build, stage, cache, config, info):
     environment["EXTRA_PLATFORM_PLUGINS"] = ";".join(extra_platforms)
     cpp_libraries = [Path(capture([config["cxx_compiler"], f"-print-file-name={name}"]))
                      for name in ("libstdc++.so.6", "libgcc_s.so.1")]
-    # QtKeychain загружает libsecret динамически, поэтому linuxdeploy нужна явная библиотека.
+    # QtKeychain loads libsecret dynamically, so linuxdeploy needs an explicit library.
     runtime_libraries = [*cpp_libraries, Path(config["secret_library"])]
     if any(not path.is_absolute() or not path.is_file() for path in runtime_libraries):
         raise RuntimeError("Cannot locate the C++ runtime libraries or libsecret")
     runtime_arguments = [value for library in runtime_libraries for value in ("--library", library)]
     run([tools["linuxdeploy-x86_64.AppImage"], "--appdir", appdir, "--plugin", "qt",
          "--custom-apprun", repository / "packaging/AppRun", *runtime_arguments], env=environment)
-    # Qt Wayland загружает shell/graphics integrations через dlopen: одного platform plugin недостаточно.
+    # Qt Wayland loads shell/graphics integrations via dlopen; the platform plugin alone is insufficient.
     for name in ("wayland-shell-integration", "wayland-graphics-integration-client", "wayland-decoration-client"):
         if (plugins / name).is_dir():
             shutil.copytree(plugins / name, appdir / "usr/plugins" / name, dirs_exist_ok=True)
     run([tools["linuxdeploy-x86_64.AppImage"], "--appdir", appdir,
          "--deploy-deps-only", appdir / "usr/plugins"], env=environment)
-    # Qt plugin может обернуть AppRun; резервируем окружение до любых его изменений.
+    # A Qt plugin may wrap AppRun; preserve the environment before any changes.
     shutil.copyfile(repository / "packaging/AppRun", appdir / "AppRun")
-    # Каталог внутри squashfs доступен только для чтения; профиль живёт рядом с AppImage.
+    # The directory inside squashfs is read-only; the profile lives next to the AppImage.
     (appdir / "usr/bin/portable.flag").touch()
     (appdir / "AppRun").chmod(0o755)
     info["dependencies"] = collect_licenses(appdir, config, cache, repository)
@@ -106,7 +106,7 @@ def build_appimage(repository, build, stage, cache, config, info):
          appdir, image], env=environment)
     image.chmod(0o755)
     startup_check(image, stage)
-    # Проверка запуска не должна создавать или изменять постоянный portable-профиль.
+    # The startup check must not create or modify the persistent portable profile.
     if Path(str(image) + ".data").exists():
         raise RuntimeError("Startup check unexpectedly wrote an AppImage portable profile")
     return image
@@ -165,7 +165,7 @@ def main():
             "source_commit": capture(["git", "-C", repository, "rev-parse", "HEAD"]),
             "source_dirty": bool(capture(["git", "-C", repository, "status", "--porcelain"])),
             "built_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat()}
-    # /tmp сохраняет Unix permissions и symlinks, в том числе при работе из WSL на NTFS.
+    # /tmp preserves Unix permissions and symlinks, including when running from WSL on NTFS.
     stage = Path(tempfile.mkdtemp(prefix="xlibrary-package-", dir="/tmp"))
     try:
         packages = []

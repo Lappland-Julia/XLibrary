@@ -63,7 +63,7 @@ jobs:
           build-mode: ${{ matrix.build-mode }}
           config-file: ./.github/codeql/codeql-config.yml
 
-      # Отдельная сборка после init нужна для перехвата компиляции CodeQL.
+      # A separate build after init lets CodeQL intercept compilation.
       - name: Build C and C++
         if: matrix.language == 'c-cpp'
         shell: pwsh

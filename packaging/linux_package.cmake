@@ -1,7 +1,7 @@
-# CPack выполняет этот раздел только при явном создании пакета.
+# CPack executes this section only when explicitly creating a package.
 if(XLIBRARY_CPACK_PROJECT_CONFIG)
     if(CPACK_GENERATOR STREQUAL "DEB")
-        # Системный Qt из testing/unstable тоже принадлежит dpkg, но несовместим с базой выпуска.
+        # System Qt from testing/unstable also belongs to dpkg but is incompatible with the release baseline.
         if(CPACK_XLIBRARY_QT_VERSION VERSION_GREATER "6.8.2")
             message(FATAL_ERROR
                     "DEB packaging for Debian 13 requires Qt <= 6.8.2; "
@@ -56,7 +56,7 @@ set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
 set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
-# Платформенные плагины Qt загружаются динамически и не видны dpkg-shlibdeps.
+# Qt platform plugins are loaded dynamically and are invisible to dpkg-shlibdeps.
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "qt6-qpa-plugins, qt6-wayland, xdg-utils, libsecret-1-0")
 
 foreach(xlibrary_qt_module IN ITEMS Core Gui Widgets Concurrent Network DBus)

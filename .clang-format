@@ -26,20 +26,20 @@ LineEnding: LF
 SortIncludes: CaseInsensitive
 IncludeBlocks: Regroup
 IncludeCategories:
-  # windows.h должен предшествовать остальным заголовкам Windows SDK.
+  # windows.h must precede the other Windows SDK headers.
   - Regex: '^[<"]windows\.h[>"]$'
     Priority: -30
     SortPriority: -40
   - Regex: '^[<"](objbase|shellapi|tlhelp32|winver)\.h[>"]$'
     Priority: -30
     SortPriority: -30
-  # Системные заголовки Linux/POSIX и X11 идут перед C++ и Qt.
+  # Linux/POSIX and X11 system headers precede C++ and Qt headers.
   - Regex: '^<(sys/.*|linux/.*|X11/.*|xcb/.*|unistd\.h|dirent\.h|fcntl\.h|signal\.h|spawn\.h|poll\.h|pwd\.h)>'
     Priority: -30
     SortPriority: -30
-  # Стандартная библиотека и прочие внешние зависимости подключаются через <>.
+  # Include standard library headers and other external dependencies with <>.
   - Regex: '^<'
     Priority: -20
-  # Приоритет 0 объединяет собственные заголовки с автоматически найденным главным.
+  # Priority 0 groups project headers with the automatically detected main header.
   - Regex: '^"'
     Priority: 0
