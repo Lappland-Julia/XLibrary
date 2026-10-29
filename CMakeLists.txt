@@ -133,7 +133,7 @@ else()
             src/Linux/Database.cpp
             src/Linux/Heartbeat.cpp
             src/Linux/WindowManager.cpp
-            src/Linux/linux_process.cpp src/Linux/linux_process.h
+            src/Linux/LinuxProcessor.cpp src/Linux/LinuxProcessor.h
     )
 endif()
 target_include_directories(xlibrary_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")

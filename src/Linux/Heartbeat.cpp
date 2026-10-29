@@ -2,7 +2,7 @@
 #include <system_error>
 
 #include "Heartbeat.h"
-#include "linux_process.h"
+#include "LinuxProcessor.h"
 
 std::move_only_function<std::pair<bool, std::uint32_t>()>
 Heartbeat::make_process_checker(std::uint32_t process_id, const std::filesystem::path &executable_path) {

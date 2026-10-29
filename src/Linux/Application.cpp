@@ -3,7 +3,7 @@
 #include <utility>
 
 #include "Application.h"
-#include "linux_process.h"
+#include "LinuxProcessor.h"
 
 std::uint32_t Application::get_pid() const noexcept {
     if (!this->process_handle) {

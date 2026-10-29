@@ -16,7 +16,7 @@
 #include <thread>
 #include <vector>
 
-#include "linux_process.h"
+#include "LinuxProcessor.h"
 
 namespace {
 bool process_disappeared(const std::error_code &error) {
