@@ -1,8 +1,10 @@
 #include <algorithm>
 #include <QDateTime>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QSet>
+#include <QTemporaryDir>
 #include <stdexcept>
 
 #include "catalog_store.h"
@@ -169,6 +171,78 @@ CatalogStore::CatalogStore(const QString &database_path) : database(filesystem_p
         );
     )");
     transaction.commit();
+}
+
+QString CatalogStore::restore_backup(const QString &source, const QString &destination) {
+    const auto fail = [](const QString &message) { throw std::runtime_error(message.toStdString()); };
+    if (!QFileInfo(source).isFile() ||
+        QFileInfo(source).canonicalFilePath() == QFileInfo(destination).canonicalFilePath())
+        fail(QCoreApplication::translate("XLibrary", "Select a different, existing SQLite backup file."));
+    const auto parent = QFileInfo(destination).absolutePath();
+    if (!QDir().mkpath(parent))
+        fail(QCoreApplication::translate("XLibrary", "Could not create the library folder."));
+    QTemporaryDir staging(parent + "/.xlibrary-recovery-XXXXXX");
+    if (!staging.isValid())
+        fail(QCoreApplication::translate("XLibrary", "Could not create a recovery folder."));
+    const auto restored = staging.filePath("restored.db");
+    {
+        sqlite3 *raw_source = nullptr;
+        const auto opened = sqlite3_open_v2(source.toUtf8().constData(), &raw_source, SQLITE_OPEN_READONLY, nullptr);
+        const std::unique_ptr<sqlite3, decltype(&sqlite3_close_v2)> input(raw_source, &sqlite3_close_v2);
+        if (opened != SQLITE_OK)
+            fail(QCoreApplication::translate("XLibrary", "Could not open the SQLite backup."));
+        Statement check(input.get(), "PRAGMA quick_check;");
+        if (!check.next() || check.text(0) != "ok")
+            fail(QCoreApplication::translate("XLibrary", "The SQLite backup is damaged."));
+        Statement schema(input.get(), "SELECT a.id,a.name,a.path,t.id,t.name,at.application_id,at.tag_id "
+                                      "FROM applications a, tags t, application_tags at LIMIT 0;");
+        schema.next();
+        sqlite3 *raw_destination = nullptr;
+        const auto created = sqlite3_open(restored.toUtf8().constData(), &raw_destination);
+        const std::unique_ptr<sqlite3, decltype(&sqlite3_close_v2)> output(raw_destination, &sqlite3_close_v2);
+        if (created != SQLITE_OK)
+            fail(QCoreApplication::translate("XLibrary", "Could not prepare the restored library."));
+        auto *backup = sqlite3_backup_init(output.get(), "main", input.get(), "main");
+        if (!backup)
+            fail(QCoreApplication::translate("XLibrary", "Could not read the SQLite backup."));
+        const auto copied = sqlite3_backup_step(backup, -1);
+        const auto finished = sqlite3_backup_finish(backup);
+        if (copied != SQLITE_DONE || finished != SQLITE_OK)
+            fail(QCoreApplication::translate("XLibrary", "Could not copy the SQLite backup."));
+    }
+    // Проверяем схему и миграцию в отдельном файле, прежде чем трогать исходную БД.
+    {
+        CatalogStore candidate(restored);
+        candidate.read();
+    }
+    QVector<QPair<QString, QString>> moved;
+    for (const auto &suffix : {QString{}, QString("-wal"), QString("-shm"), QString("-journal")}) {
+        const auto original = destination + suffix;
+        if (!QFileInfo::exists(original))
+            continue;
+        const auto saved = staging.filePath("previous.db" + suffix);
+        if (!QFile::rename(original, saved)) {
+            for (auto it = moved.crbegin(); it != moved.crend(); ++it)
+                QFile::rename(it->second, it->first);
+            // При сбое отката сохраняем папку с исходными файлами для ручного восстановления.
+            staging.setAutoRemove(false);
+            fail(QCoreApplication::translate("XLibrary", "Could not preserve the current library. Recovery files: %1")
+                     .arg(staging.path()));
+        }
+        moved.append({original, saved});
+    }
+    if (!QFile::rename(restored, destination)) {
+        for (auto it = moved.crbegin(); it != moved.crend(); ++it)
+            QFile::rename(it->second, it->first);
+        staging.setAutoRemove(false);
+        fail(QCoreApplication::translate("XLibrary", "Could not install the restored library. Recovery files: %1")
+                 .arg(staging.path()));
+    }
+    if (!moved.isEmpty()) {
+        staging.setAutoRemove(false);
+        return staging.path();
+    }
+    return {};
 }
 
 catalog_snapshot CatalogStore::read() const {

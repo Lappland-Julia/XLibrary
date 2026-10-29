@@ -1900,5 +1900,81 @@ Automatic installation is unavailable for this copy or release. Follow the relea
         <source>Use the GitHub release to update this installation.</source>
         <translation>Для обновления этой установки используйте выпуск на GitHub.</translation>
     </message>
+    <message>
+        <source>Select a different, existing SQLite backup file.</source>
+        <translation>Выберите другой существующий файл резервной копии SQLite.</translation>
+    </message>
+    <message>
+        <source>Could not create the library folder.</source>
+        <translation>Не удалось создать папку библиотеки.</translation>
+    </message>
+    <message>
+        <source>Could not create a recovery folder.</source>
+        <translation>Не удалось создать папку восстановления.</translation>
+    </message>
+    <message>
+        <source>Could not open the SQLite backup.</source>
+        <translation>Не удалось открыть резервную копию SQLite.</translation>
+    </message>
+    <message>
+        <source>The SQLite backup is damaged.</source>
+        <translation>Резервная копия SQLite повреждена.</translation>
+    </message>
+    <message>
+        <source>Could not prepare the restored library.</source>
+        <translation>Не удалось подготовить восстановленную библиотеку.</translation>
+    </message>
+    <message>
+        <source>Could not read the SQLite backup.</source>
+        <translation>Не удалось прочитать резервную копию SQLite.</translation>
+    </message>
+    <message>
+        <source>Could not copy the SQLite backup.</source>
+        <translation>Не удалось скопировать резервную копию SQLite.</translation>
+    </message>
+    <message>
+        <source>Could not preserve the current library. Recovery files: %1</source>
+        <translation>Не удалось сохранить текущую библиотеку. Файлы восстановления: %1</translation>
+    </message>
+    <message>
+        <source>Could not install the restored library. Recovery files: %1</source>
+        <translation>Не удалось заменить библиотеку восстановленной копией. Файлы восстановления: %1</translation>
+    </message>
+    <message>
+        <source>Library restored.</source>
+        <translation>Библиотека восстановлена.</translation>
+    </message>
+    <message>
+        <source>Library restored. Previous files: %1</source>
+        <translation>Библиотека восстановлена. Прежние файлы: %1</translation>
+    </message>
+    <message>
+        <source>Retry</source>
+        <translation>Повторить</translation>
+    </message>
+    <message>
+        <source>Open profile folder</source>
+        <translation>Открыть папку профиля</translation>
+    </message>
+    <message>
+        <source>Restore backup…</source>
+        <translation>Восстановить копию…</translation>
+    </message>
+    <message>
+        <source>Select a SQLite backup</source>
+        <translation>Выберите резервную копию SQLite</translation>
+    </message>
+    <message>
+        <source>Restore library</source>
+        <translation>Восстановление библиотеки</translation>
+    </message>
+    <message>
+        <source>Replace the library with this backup? The current database files will be preserved.</source>
+        <translation>Заменить библиотеку этой копией? Текущие файлы базы данных будут сохранены.</translation>
+    </message>
+    <message>
+        <source>Could not open the library</source>
+        <translation>Не удалось открыть библиотеку</translation>
+    </message>
 </context>
 </TS>

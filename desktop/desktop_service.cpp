@@ -72,6 +72,10 @@ public:
 
     void initialize() {
         try {
+            if (database_path.isEmpty())
+                database_path = path_text(Database::get_database_path());
+            emit location_changed(database_path);
+            store.reset();
             store = std::make_unique<CatalogStore>(database_path);
             refresh();
             monitor = new QTimer(this);
@@ -79,8 +83,25 @@ public:
             connect(monitor, &QTimer::timeout, this, [this] { poll(); });
             monitor->start();
         } catch (const std::exception &error) {
-            emit failed(QCoreApplication::translate("XLibrary", "Could not open the library: %1")
-                            .arg(QString::fromUtf8(error.what())));
+            store.reset();
+            emit initialization_failed(QCoreApplication::translate("XLibrary", "Could not open the library: %1")
+                                           .arg(QString::fromUtf8(error.what())));
+        }
+    }
+    void restore(const QString &path) {
+        try {
+            if (database_path.isEmpty())
+                database_path = path_text(Database::get_database_path());
+            store.reset();
+            const auto preserved = CatalogStore::restore_backup(path, database_path);
+            initialize();
+            if (store)
+                emit notification(preserved.isEmpty()
+                                      ? QCoreApplication::translate("XLibrary", "Library restored.")
+                                      : QCoreApplication::translate("XLibrary", "Library restored. Previous files: %1")
+                                            .arg(preserved));
+        } catch (const std::exception &error) {
+            emit initialization_failed(QString::fromUtf8(error.what()));
         }
     }
     void refresh() {
@@ -117,6 +138,8 @@ public:
 
 signals:
     void loaded(const catalog_snapshot &catalog);
+    void initialization_failed(const QString &message);
+    void location_changed(const QString &path);
     void state_changed(const QSet<QString> &paths, const QSet<QString> &unavailable);
     void failed(const QString &message);
     void completed(const QString &operation, bool success);
@@ -140,6 +163,14 @@ DesktopService::DesktopService(QObject *parent, const QString &profile_path, con
     worker->moveToThread(&worker_thread);
     connect(&worker_thread, &QThread::started, worker, &CatalogWorker::initialize);
     connect(&worker_thread, &QThread::finished, worker, &QObject::deleteLater);
+    connect(worker, &CatalogWorker::location_changed, this, [this](const QString &path) { library_file = path; });
+    connect(worker, &CatalogWorker::initialization_failed, this, [this](const QString &error) {
+        opening = false;
+        ready = false;
+        opening_error = error;
+        emit catalog_changed();
+        emit message(error);
+    });
     connect(worker, &CatalogWorker::failed, this, &DesktopService::message);
     connect(worker, &CatalogWorker::notification, this, &DesktopService::message);
     connect(worker, &CatalogWorker::discovery_report_ready, this, [this](const QString &report) {
@@ -168,6 +199,8 @@ DesktopService::DesktopService(QObject *parent, const QString &profile_path, con
         if (!current_tag.isEmpty() && !snapshot.tags.contains(current_tag))
             navigate(current_section);
         ready = true;
+        opening = false;
+        opening_error.clear();
         model.replace(value.applications);
         if (!model.find(selected_id))
             selected_id = 0;
@@ -221,12 +254,34 @@ DesktopService::~DesktopService() {
     worker_thread.wait();
 }
 
+void DesktopService::retry_library() {
+    if (ready || opening)
+        return;
+    opening = true;
+    opening_error.clear();
+    emit catalog_changed();
+    QMetaObject::invokeMethod(worker, &CatalogWorker::initialize, Qt::QueuedConnection);
+}
+
+void DesktopService::open_profile_folder() {
+    enqueue("folder", [path = settings.fileName()](CatalogWorker &) { desktop_platform::open_folder(path); });
+}
+
+void DesktopService::restore_library(const QString &path) {
+    if (ready || opening || path.isEmpty())
+        return;
+    opening = true;
+    opening_error.clear();
+    emit catalog_changed();
+    QMetaObject::invokeMethod(worker, [worker = worker, path] { worker->restore(path); }, Qt::QueuedConnection);
+}
+
 void DesktopService::enqueue(const QString &operation, std::function<void(CatalogWorker &)> task) {
     QMetaObject::invokeMethod(
         worker,
         [worker = worker, operation, task = std::move(task)] {
             try {
-                if (!worker->store)
+                if (!worker->store && operation != "folder")
                     throw std::runtime_error(
                         QCoreApplication::translate(
                             "XLibrary",

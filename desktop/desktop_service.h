@@ -33,6 +33,9 @@ private:
     QString scan_report;
     std::shared_ptr<discovery_control> discovery_cancelled = std::make_shared<discovery_control>();
     bool ready = false;
+    bool opening = true;
+    QString opening_error;
+    QString library_file;
     qint64 selected_id = 0;
     QString current_section = "library";
     QString current_tag;
@@ -49,6 +52,12 @@ public:
                             const QString &database_path = {});
     ~DesktopService() override;
     bool is_ready() const { return ready; }
+    bool is_opening() const { return opening; }
+    QString library_error() const { return opening_error; }
+    QString library_path() const { return library_file; }
+    void retry_library();
+    void open_profile_folder();
+    void restore_library(const QString &path);
     bool is_discovering() const { return discovering; }
     bool is_cancelling_discovery() const {
         return discovering && discovery_cancelled->phase.load() == discovery_phase::cancelling;

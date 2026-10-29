@@ -14,11 +14,11 @@ private:
     std::filesystem::path file_path;
     std::unique_ptr<sqlite3, decltype(&sqlite3_close_v2)> connection{nullptr, &sqlite3_close_v2};
 
-    static std::filesystem::path get_database_path();
     void execute(const char *sql) const;
     void initialize() const;
 
 public:
+    static std::filesystem::path get_database_path();
     Database();
     Database(const std::filesystem::path &path, bool drop_on_add_error);
     explicit Database(const bool drop_on_add_error) : Database() { this->drop_on_add_error = drop_on_add_error; }
