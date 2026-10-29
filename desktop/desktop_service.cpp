@@ -137,12 +137,10 @@ public:
         }
         for (auto &record : catalog.applications)
             record.running = paths.contains(normalized_path(record.path));
-        if (capabilities_changed)
-            emit loaded(catalog);
-        if (paths != last_running || unavailable != last_unavailable) {
+        if (capabilities_changed || paths != last_running || unavailable != last_unavailable) {
             last_running = paths;
             last_unavailable = unavailable;
-            emit state_changed(paths, unavailable);
+            emit state_changed(catalog.applications);
         }
     }
 
@@ -150,7 +148,7 @@ signals:
     void loaded(const catalog_snapshot &catalog);
     void initialization_failed(const QString &message);
     void location_changed(const QString &path);
-    void state_changed(const QSet<QString> &paths, const QSet<QString> &unavailable);
+    void state_changed(const QVector<app_record> &applications);
     void failed(const QString &message);
     void completed(const QString &operation, bool success);
     void resolved(const QString &requested_path, const app_record &record);
@@ -217,16 +215,11 @@ DesktopService::DesktopService(QObject *parent, const QString &profile_path, con
         emit catalog_changed();
         emit selection_changed();
     });
-    connect(worker, &CatalogWorker::state_changed, this,
-            [this](const QSet<QString> &paths, const QSet<QString> &unavailable) {
-                for (auto &record : snapshot.applications) {
-                    const auto path = normalized_path(record.path);
-                    record.running = paths.contains(path);
-                    record.available = !unavailable.contains(path);
-                }
-                model.update_state(paths, unavailable);
-                emit selection_changed();
-            });
+    connect(worker, &CatalogWorker::state_changed, this, [this](const QVector<app_record> &applications) {
+        snapshot.applications = applications;
+        model.update_state(applications);
+        emit selection_changed();
+    });
     connect(worker, &CatalogWorker::launched, this, [this](qint64 id, bool success, quint64 from_scenario) {
         launching.remove(id);
         if (success && !from_scenario)
