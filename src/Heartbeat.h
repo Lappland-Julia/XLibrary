@@ -3,11 +3,16 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <thread>
+#include <utility>
 
 class Heartbeat {
 private:
+    static std::move_only_function<std::pair<bool, std::uint32_t>()>
+    make_process_checker(std::uint32_t process_id, const std::filesystem::path &executable_path);
+
     struct State;
     std::shared_ptr<State> state;
     std::jthread worker;

@@ -17,7 +17,7 @@
 #include "application_paths.h"
 #include "localization.h"
 #include "platform_integration.h"
-#include "RegistryScan.h"
+#include "Windows/RegistryScan.h"
 
 namespace {
 using unique_handle = std::unique_ptr<void, decltype(&CloseHandle)>;

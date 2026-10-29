@@ -118,11 +118,23 @@ add_library(xlibrary_core STATIC
 )
 
 if(WIN32)
-    target_sources(xlibrary_core PRIVATE src/RegistryScan.cpp src/RegistryScan.h)
+    target_sources(xlibrary_core PRIVATE
+            src/Windows/Application.cpp
+            src/Windows/Database.cpp
+            src/Windows/Heartbeat.cpp
+            src/Windows/WindowManager.cpp
+            src/Windows/RegistryScan.cpp src/Windows/RegistryScan.h
+    )
     target_compile_definitions(xlibrary_core PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(xlibrary_core PUBLIC version shell32 gdi32 advapi32)
 else()
-    target_sources(xlibrary_core PRIVATE src/linux_process.cpp src/linux_process.h)
+    target_sources(xlibrary_core PRIVATE
+            src/Linux/Application.cpp
+            src/Linux/Database.cpp
+            src/Linux/Heartbeat.cpp
+            src/Linux/WindowManager.cpp
+            src/Linux/linux_process.cpp src/Linux/linux_process.h
+    )
 endif()
 target_include_directories(xlibrary_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(xlibrary_core PUBLIC
