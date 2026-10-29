@@ -161,7 +161,9 @@ void scan_app_paths(registry_scope scope, scan_result<discovered_application> &r
                       if (value.empty())
                           return;
                       std::filesystem::path path(value);
-                      // The App Paths value must contain an absolute path to the EXE.
+                      // Windows дополняет отсутствующее расширение App Paths суффиксом .exe.
+                      if (path.extension().empty())
+                          path += L".exe";
                       if (!path.is_absolute() || !equal_ignore_case(path.extension().native(), L".exe")) {
                           result.issues.push_back({source, L"Invalid App Paths EXE", ERROR_INVALID_DATA});
                           return;
