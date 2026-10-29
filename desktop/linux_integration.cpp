@@ -1,3 +1,4 @@
+#include "Linux/LinuxProcessor.h"
 #include "localization.h"
 #ifdef XLIBRARY_HAVE_X11
 #include <X11/keysym.h>
@@ -520,27 +521,28 @@ bool matches_process(const process_identity &identity, const QString &process_di
         const auto program = QFileInfo(identity.executable).fileName();
         if (program.startsWith("python") || program == "perl" || program == "ruby" || program == "node" ||
             program == "java" || program == "bash" || program == "dash" || program == "zsh" || program == "sh") {
-            for (const auto &argument : identity.arguments) {
-                if (QFileInfo(argument).isAbsolute() && QFileInfo(argument).isFile())
-                    return std::any_of(
-                        arguments.cbegin() + std::min<qsizetype>(1, arguments.size()), arguments.cend(),
-                        [&](const QString &item) { return canonical_path(item) == canonical_path(argument); });
+            if (arguments.size() <= identity.arguments.size())
+                return false;
+            for (qsizetype index = 0; index < identity.arguments.size(); ++index) {
+                const auto &expected = identity.arguments[index];
+                auto actual = arguments[index + 1];
+                if (QFileInfo(expected).isAbsolute() && QFileInfo(expected).isFile()) {
+                    if (QFileInfo(actual).isRelative())
+                        actual = QFileInfo(process_directory + "/cwd").symLinkTarget() + '/' + actual;
+                    if (canonical_path(actual) != canonical_path(expected))
+                        return false;
+                } else if (actual != expected) {
+                    return false;
+                }
             }
-            // -c/-m/-e identify the application as well as a script path; the shared interpreter alone is insufficient.
-            return identity.arguments.isEmpty() ||
-                   (arguments.size() > identity.arguments.size() &&
-                    std::equal(identity.arguments.cbegin(), identity.arguments.cend(), arguments.cbegin() + 1));
+            return true;
         }
         return true;
     }
     // For an executable script, /proc/exe points to the interpreter; the script path remains in argv.
-    if (identity.script) {
-        for (qsizetype index = 1; index < arguments.size(); ++index) {
-            if (arguments[index].startsWith('-'))
-                continue;
-            return QFileInfo(arguments[index]).isAbsolute() && canonical_path(arguments[index]) == identity.executable;
-        }
-    }
+    if (identity.script)
+        return xlibrary::script_process_matches(QFileInfo(process_directory).fileName().toUInt(),
+                                                filesystem_path(identity.executable));
     return false;
 }
 

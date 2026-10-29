@@ -169,57 +169,127 @@ public:
     }
 };
 
-bool script_matches(std::uint32_t process_id, const std::filesystem::path &expected_path) {
+} // namespace
+
+bool xlibrary::script_process_matches(std::uint32_t process_id, const std::filesystem::path &expected_path) {
     std::ifstream script(expected_path, std::ios::binary);
-    char prefix[2]{};
-    if (!script.read(prefix, sizeof(prefix)) || prefix[0] != '#' || prefix[1] != '!') {
-        return false;
-    }
     std::string shebang;
     std::getline(script, shebang);
-    std::istringstream interpreter_line(shebang);
-    std::string interpreter;
-    interpreter_line >> interpreter;
-
-    std::error_code error;
-    const auto command_line =
-        read_process_file(std::filesystem::path("/proc") / std::to_string(process_id) / "cmdline", error);
-    std::vector<std::string> arguments;
-    for (std::size_t offset = 0; !error && offset < command_line.size();) {
-        const auto end = command_line.find('\0', offset);
-        if (end == std::string::npos) {
-            return false;
+    if (!shebang.starts_with("#!") || shebang.size() > 4096)
+        return false;
+    const auto first = shebang.find_first_not_of(" \t", 2);
+    if (first == std::string::npos)
+        return false;
+    const auto end = shebang.find_first_of(" \t", first);
+    std::filesystem::path interpreter(shebang.substr(first, end - first));
+    std::vector<std::string> interpreter_arguments;
+    if (end != std::string::npos) {
+        const auto argument_start = shebang.find_first_not_of(" \t", end);
+        if (argument_start != std::string::npos) {
+            auto argument = shebang.substr(argument_start);
+            argument.erase(argument.find_last_not_of(" \t") + 1);
+            interpreter_arguments.push_back(std::move(argument));
         }
+    }
+    const auto directory = std::filesystem::path("/proc") / std::to_string(process_id);
+    std::error_code error;
+    const auto process_executable = std::filesystem::read_symlink(directory / "exe", error);
+    if (error)
+        return false;
+    if (interpreter.filename() == "env") {
+        if (interpreter_arguments.empty())
+            return false;
+        auto command = interpreter_arguments.front();
+        const bool split =
+            command.starts_with("-S ") || command.starts_with("-S\t") || command.starts_with("--split-string=");
+        if (split) {
+            command.erase(0, command.starts_with("--split-string=") ? 15 : 2);
+            try {
+                interpreter_arguments = split_arguments(command);
+            } catch (const std::invalid_argument &) {
+                return false;
+            }
+        }
+        // Без -S env получает всю оставшуюся строку как одно имя команды.
+        while (!interpreter_arguments.empty()) {
+            const auto &argument = interpreter_arguments.front();
+            if (argument == "--") {
+                interpreter_arguments.erase(interpreter_arguments.begin());
+                break;
+            }
+            if (argument == "-u" || argument == "--unset") {
+                if (interpreter_arguments.size() < 2)
+                    return false;
+                interpreter_arguments.erase(interpreter_arguments.begin(), interpreter_arguments.begin() + 2);
+            } else if (argument == "-i" || argument == "--ignore-environment" || argument.starts_with("--unset=") ||
+                       argument.find('=') != std::string::npos) {
+                interpreter_arguments.erase(interpreter_arguments.begin());
+            } else {
+                break;
+            }
+        }
+        if (interpreter_arguments.empty() || interpreter_arguments.front().starts_with('-'))
+            return false;
+        interpreter = interpreter_arguments.front();
+        interpreter_arguments.erase(interpreter_arguments.begin());
+        if (interpreter.is_relative()) {
+            // Проверяем файл интерпретатора, а не argv[0], который процесс может подменить.
+            const auto environment = read_process_file(directory / "environ", error);
+            std::string search_path;
+            for (std::size_t offset = 0; !error && offset < environment.size();) {
+                const auto end = environment.find('\0', offset);
+                if (end == std::string::npos)
+                    break;
+                const auto value = environment.substr(offset, end - offset);
+                if (value.starts_with("PATH="))
+                    search_path = value.substr(5);
+                offset = end + 1;
+            }
+            bool found = false;
+            std::istringstream paths(search_path);
+            std::string component;
+            while (std::getline(paths, component, ':')) {
+                auto candidate = std::filesystem::path(component) / interpreter;
+                if (candidate.is_relative()) {
+                    candidate = std::filesystem::read_symlink(directory / "cwd", error) / candidate;
+                    if (error)
+                        return false;
+                }
+                if (std::filesystem::equivalent(candidate, process_executable, error)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+                return false;
+            interpreter = process_executable;
+        }
+    }
+    if (!std::filesystem::equivalent(interpreter, process_executable, error))
+        return false;
+    const auto command_line = read_process_file(directory / "cmdline", error);
+    if (error)
+        return false;
+    std::vector<std::string> arguments;
+    for (std::size_t offset = 0; offset < command_line.size();) {
+        const auto end = command_line.find('\0', offset);
+        if (end == std::string::npos)
+            return false;
         arguments.push_back(command_line.substr(offset, end - offset));
         offset = end + 1;
     }
-    if (arguments.size() < 2) {
+    const auto script_index = interpreter_arguments.size() + 1;
+    if (arguments.size() <= script_index ||
+        !std::equal(interpreter_arguments.begin(), interpreter_arguments.end(), arguments.begin() + 1))
         return false;
+    auto argument_path = std::filesystem::path(arguments[script_index]);
+    if (argument_path.is_relative()) {
+        argument_path = std::filesystem::read_symlink(directory / "cwd", error) / argument_path;
+        if (error)
+            return false;
     }
-    if (std::filesystem::path(interpreter).filename() != "env" &&
-        std::filesystem::path(arguments.front()).filename() != std::filesystem::path(interpreter).filename()) {
-        return false;
-    }
-    for (std::size_t index = 1; index < arguments.size(); ++index) {
-        auto argument_path = std::filesystem::path(arguments[index]);
-        if (argument_path.is_relative() && !argument_path.empty() && arguments[index].front() != '-') {
-            const auto directory = std::filesystem::read_symlink(
-                std::filesystem::path("/proc") / std::to_string(process_id) / "cwd", error);
-            if (error) {
-                return false;
-            }
-            argument_path = directory / argument_path;
-        }
-        if (argument_path == expected_path || std::filesystem::equivalent(argument_path, expected_path, error)) {
-            return true;
-        }
-        if (arguments[index].empty() || arguments[index].front() != '-') {
-            break;
-        }
-    }
-    return false;
+    return std::filesystem::equivalent(argument_path, expected_path, error);
 }
-} // namespace
 
 std::optional<xlibrary::process_identity> xlibrary::read_process_identity(std::uint32_t process_id,
                                                                           std::error_code &error) {
@@ -282,7 +352,7 @@ bool xlibrary::process_matches(const process_identity &identity, const std::file
     }
     bool matches = process_path == executable_path;
     if (!matches) {
-        matches = script_matches(identity.pid, executable_path);
+        matches = script_process_matches(identity.pid, executable_path);
     }
     return matches && is_process_alive(identity, error);
 }
