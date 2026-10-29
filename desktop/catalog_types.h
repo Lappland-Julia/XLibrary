@@ -30,6 +30,7 @@ struct app_record {
     bool favorite = false;
     bool available = true;
     bool running = false;
+    QString new_instance_error;
     qint64 last_launch = 0;
 };
 

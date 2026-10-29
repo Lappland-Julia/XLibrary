@@ -54,6 +54,7 @@ constexpr int x11_success = Success;
 #include <stdexcept>
 
 #include "application_paths.h"
+#include "path_helpers.h"
 #include "platform_integration.h"
 
 namespace {
@@ -920,6 +921,24 @@ QSet<QString> desktop_platform::running_paths(const QVector<app_record> &applica
         }
     }
     return result;
+}
+
+QString desktop_platform::new_instance_error(const app_record &record) {
+    if (QFileInfo(record.path).suffix() != "desktop")
+        return {};
+    try {
+        const auto entry = read_entry(record.path);
+        validate_entry(entry);
+        if (entry.values.value("Exec").isEmpty())
+            return QCoreApplication::translate("XLibrary",
+                                               "Only activation is available: this desktop entry has no Exec command.");
+        const auto command = entry_command(entry);
+        if (executable_path(command.front()).isEmpty())
+            return QCoreApplication::translate("XLibrary", "The executable specified by Exec is unavailable.");
+    } catch (const std::exception &error) {
+        return QString::fromUtf8(error.what());
+    }
+    return {};
 }
 
 void desktop_platform::launch_application(const app_record &record, launch_mode mode) {

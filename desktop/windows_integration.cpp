@@ -180,6 +180,10 @@ bool desktop_platform::activate_window(const app_record &record) {
     return true;
 }
 
+QString desktop_platform::new_instance_error(const app_record &) {
+    return {};
+}
+
 void desktop_platform::launch_application(const app_record &record, launch_mode mode) {
     if (mode == launch_mode::activate && activate_window(record))
         return;

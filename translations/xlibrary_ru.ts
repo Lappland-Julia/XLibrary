@@ -1976,5 +1976,17 @@ Automatic installation is unavailable for this copy or release. Follow the relea
         <source>Could not open the library</source>
         <translation>Не удалось открыть библиотеку</translation>
     </message>
+    <message>
+        <source>Request new instance</source>
+        <translation>Запросить новый экземпляр</translation>
+    </message>
+    <message>
+        <source>Only activation is available: this desktop entry has no Exec command.</source>
+        <translation>Доступна только активация: в этой записи .desktop нет команды Exec.</translation>
+    </message>
+    <message>
+        <source>Runs the launch command directly. The application may reuse an existing window.</source>
+        <translation>Выполняет команду запуска напрямую. Приложение может использовать уже открытое окно.</translation>
+    </message>
 </context>
 </TS>

@@ -267,6 +267,15 @@ void MainWindow::refresh_actions() {
     for (const auto &id : {"launch", "new_instance", "edit_application", "remove_application", "favorite",
                            "open_folder", "copy_path", "details"})
         context.actions.value(id)->setEnabled(record != nullptr && service.section() != "scenarios");
+    auto *new_instance = context.actions.value("new_instance");
+    const bool can_start = record && record->available && record->new_instance_error.isEmpty();
+    new_instance->setEnabled(can_start && service.section() != "scenarios");
+    new_instance->setText(QCoreApplication::translate("XLibrary", "Request new instance"));
+    new_instance->setToolTip(
+        record && !record->new_instance_error.isEmpty()
+            ? record->new_instance_error
+            : QCoreApplication::translate(
+                  "XLibrary", "Runs the launch command directly. The application may reuse an existing window."));
     context.actions.value("add_application")->setEnabled(service.is_ready());
     context.actions.value("add_tag")->setEnabled(service.is_ready());
     context.actions.value("add_scenario")->setEnabled(service.is_ready() && service.model.rowCount() > 0);

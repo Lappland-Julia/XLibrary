@@ -106,14 +106,22 @@ public:
     }
     void refresh() {
         catalog = store->read();
-        for (auto &record : catalog.applications)
+        for (auto &record : catalog.applications) {
             record.running = last_running.contains(normalized_path(record.path));
+            record.new_instance_error = desktop_platform::new_instance_error(record);
+        }
         emit loaded(catalog);
         poll();
     }
     void poll() {
         QSet<QString> unavailable;
+        bool capabilities_changed = false;
         for (auto &record : catalog.applications) {
+            const auto error = desktop_platform::new_instance_error(record);
+            if (error != record.new_instance_error) {
+                record.new_instance_error = error;
+                capabilities_changed = true;
+            }
             record.available = QFileInfo(record.path).isFile();
             if (!record.available)
                 unavailable.insert(normalized_path(record.path));
@@ -129,6 +137,8 @@ public:
         }
         for (auto &record : catalog.applications)
             record.running = paths.contains(normalized_path(record.path));
+        if (capabilities_changed)
+            emit loaded(catalog);
         if (paths != last_running || unavailable != last_unavailable) {
             last_running = paths;
             last_unavailable = unavailable;
