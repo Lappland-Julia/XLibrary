@@ -68,7 +68,8 @@ std::string Application::read_application_name(const std::filesystem::path &exec
     for (const auto *field_name : field_names) {
         for (std::size_t index = 0; index < translation_count; ++index) {
             language_and_code_page translation{};
-            std::memcpy(&translation, static_cast<const std::byte *>(translation_data) + index * sizeof(translation),
+            std::memcpy(&translation,
+                        static_cast<const unsigned char *>(translation_data) + index * sizeof(translation),
                         sizeof(translation));
 
             wchar_t query[64]{};
