@@ -67,6 +67,7 @@ public:
     catalog_snapshot catalog;
     QTimer *monitor = nullptr;
     QSet<QString> last_running;
+    QSet<QString> last_unavailable;
     bool monitor_error = false;
 
     void initialize() {
@@ -90,23 +91,33 @@ public:
         poll();
     }
     void poll() {
+        QSet<QString> unavailable;
+        for (auto &record : catalog.applications) {
+            record.available = QFileInfo(record.path).isFile();
+            if (!record.available)
+                unavailable.insert(normalized_path(record.path));
+        }
+        auto paths = last_running;
         try {
-            const auto paths = desktop_platform::running_paths(catalog.applications);
+            paths = desktop_platform::running_paths(catalog.applications);
             monitor_error = false;
-            if (paths != last_running) {
-                last_running = paths;
-                emit running_changed(paths);
-            }
         } catch (const std::exception &error) {
             if (!monitor_error)
                 emit failed(QString::fromUtf8(error.what()));
             monitor_error = true;
         }
+        for (auto &record : catalog.applications)
+            record.running = paths.contains(normalized_path(record.path));
+        if (paths != last_running || unavailable != last_unavailable) {
+            last_running = paths;
+            last_unavailable = unavailable;
+            emit state_changed(paths, unavailable);
+        }
     }
 
 signals:
     void loaded(const catalog_snapshot &catalog);
-    void running_changed(const QSet<QString> &paths);
+    void state_changed(const QSet<QString> &paths, const QSet<QString> &unavailable);
     void failed(const QString &message);
     void completed(const QString &operation, bool success);
     void resolved(const QString &requested_path, const app_record &record);
@@ -163,10 +174,16 @@ DesktopService::DesktopService(QObject *parent, const QString &profile_path, con
         emit catalog_changed();
         emit selection_changed();
     });
-    connect(worker, &CatalogWorker::running_changed, this, [this](const QSet<QString> &paths) {
-        model.update_running(paths);
-        emit selection_changed();
-    });
+    connect(worker, &CatalogWorker::state_changed, this,
+            [this](const QSet<QString> &paths, const QSet<QString> &unavailable) {
+                for (auto &record : snapshot.applications) {
+                    const auto path = normalized_path(record.path);
+                    record.running = paths.contains(path);
+                    record.available = !unavailable.contains(path);
+                }
+                model.update_state(paths, unavailable);
+                emit selection_changed();
+            });
     connect(worker, &CatalogWorker::launched, this, [this](qint64 id, bool success, quint64 from_scenario) {
         launching.remove(id);
         if (success && !from_scenario)

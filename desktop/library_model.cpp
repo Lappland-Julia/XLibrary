@@ -144,12 +144,15 @@ QHash<int, QByteArray> LibraryModel::roleNames() const {
     return roles;
 }
 
-void LibraryModel::update_running(const QSet<QString> &paths) {
+void LibraryModel::update_state(const QSet<QString> &paths, const QSet<QString> &unavailable) {
     for (int row = 0; row < records.size(); ++row) {
         const bool running = paths.contains(normalized_path(records[row].path));
-        if (records[row].running != running) {
+        const bool available = !unavailable.contains(normalized_path(records[row].path));
+        if (records[row].running != running || records[row].available != available) {
             records[row].running = running;
-            emit dataChanged(index(row, 0), index(row, 2), {Qt::DisplayRole, running_role, record_role});
+            records[row].available = available;
+            emit dataChanged(index(row, 0), index(row, 2),
+                             {Qt::DisplayRole, running_role, available_role, record_role});
         }
     }
 }
