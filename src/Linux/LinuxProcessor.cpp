@@ -173,10 +173,13 @@ public:
 
 bool xlibrary::script_process_matches(std::uint32_t process_id, const std::filesystem::path &expected_path) {
     std::ifstream script(expected_path, std::ios::binary);
-    std::string shebang;
-    std::getline(script, shebang);
-    if (!shebang.starts_with("#!") || shebang.size() > 4096)
+    char prefix[2]{};
+    if (!script.read(prefix, sizeof(prefix)) || prefix[0] != '#' || prefix[1] != '!')
         return false;
+    char shebang_text[4095]{};
+    if (!script.getline(shebang_text, sizeof(shebang_text)))
+        return false;
+    const auto shebang = std::string("#!") + shebang_text;
     const auto first = shebang.find_first_not_of(" \t", 2);
     if (first == std::string::npos)
         return false;
