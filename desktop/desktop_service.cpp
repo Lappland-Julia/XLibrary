@@ -510,21 +510,52 @@ void DesktopService::cancel_discovery() {
 
 void DesktopService::export_catalog(const QString &path) {
     enqueue("export", [path](CatalogWorker &worker) {
-        QJsonArray applications;
-        for (const auto &record : worker.catalog.applications) {
-            applications.append(QJsonObject{{"name", record.name},
-                                            {"path", record.path},
-                                            {"arguments", record.arguments},
-                                            {"working_directory", record.working_directory},
-                                            {"favorite", record.favorite},
-                                            {"tags", QJsonArray::fromStringList(record.tags)}});
-        }
+        const auto too_large = [] {
+            return std::runtime_error(
+                QCoreApplication::translate(
+                    "XLibrary", "The JSON catalog exceeds 32 MiB or 50000 applications. Export was not saved. "
+                                "Use a database backup for a larger library.")
+                    .toStdString());
+        };
+        if (worker.catalog.applications.size() > catalog_limits::applications)
+            throw too_large();
         QSaveFile file(path);
         if (!file.open(QIODevice::WriteOnly))
             throw std::runtime_error(
                 QCoreApplication::translate("XLibrary", "Could not open the export file.").toStdString());
-        const auto contents = QJsonDocument(QJsonObject{{"format", 1}, {"applications", applications}}).toJson();
-        if (file.write(contents) != contents.size() || !file.commit())
+        qint64 written = 0;
+        const auto write = [&](const QByteArray &contents) {
+            if (contents.size() > catalog_limits::json_bytes - written)
+                throw too_large();
+            if (file.write(contents) != contents.size())
+                throw std::runtime_error(
+                    QCoreApplication::translate("XLibrary", "Could not save the export.").toStdString());
+            written += contents.size();
+        };
+        write("{\"format\":1,\"applications\":[");
+        bool first = true;
+        for (const auto &record : worker.catalog.applications) {
+            try {
+                CatalogStore::validate_application(record);
+            } catch (const std::invalid_argument &error) {
+                throw std::runtime_error(QCoreApplication::translate("XLibrary", "Cannot export %1: %2")
+                                             .arg(record.path, QString::fromUtf8(error.what()))
+                                             .toStdString());
+            }
+            const auto contents = QJsonDocument(QJsonObject{{"name", record.name},
+                                                            {"path", record.path},
+                                                            {"arguments", record.arguments},
+                                                            {"working_directory", record.working_directory},
+                                                            {"favorite", record.favorite},
+                                                            {"tags", QJsonArray::fromStringList(record.tags)}})
+                                      .toJson(QJsonDocument::Compact);
+            if (!first)
+                write(",");
+            first = false;
+            write(contents);
+        }
+        write("]}\n");
+        if (!file.commit())
             throw std::runtime_error(
                 QCoreApplication::translate("XLibrary", "Could not save the export.").toStdString());
         emit worker.notification(QCoreApplication::translate("XLibrary", "Library exported."));
@@ -534,12 +565,18 @@ void DesktopService::export_catalog(const QString &path) {
 void DesktopService::import_catalog(const QString &path) {
     enqueue("import", [path](CatalogWorker &worker) {
         QFile file(path);
-        if (!file.open(QIODevice::ReadOnly) || file.size() > 5 * 1024 * 1024)
+        if (!file.open(QIODevice::ReadOnly))
             throw std::runtime_error(
-                QCoreApplication::translate("XLibrary", "Cannot read the file, or its size exceeds 5 MiB.")
+                QCoreApplication::translate("XLibrary", "Could not read the import file.").toStdString());
+        const auto contents = file.read(catalog_limits::json_bytes + 1);
+        if (contents.size() > catalog_limits::json_bytes)
+            throw std::runtime_error(
+                QCoreApplication::translate("XLibrary", "The JSON catalog exceeds 32 MiB. Import cancelled.")
                     .toStdString());
+        if (file.error() != QFileDevice::NoError)
+            throw std::runtime_error(file.errorString().toStdString());
         QJsonParseError error;
-        const auto document = QJsonDocument::fromJson(file.readAll(), &error);
+        const auto document = QJsonDocument::fromJson(contents, &error);
         if (error.error != QJsonParseError::NoError)
             throw std::runtime_error(
                 QCoreApplication::translate("XLibrary", "JSON error at offset %1: %2. Import cancelled.")
@@ -559,8 +596,13 @@ void DesktopService::import_catalog(const QString &path) {
             throw std::runtime_error(
                 QCoreApplication::translate("XLibrary", "Field applications: expected an array. Import cancelled.")
                     .toStdString());
+        const auto applications = root.value("applications").toArray();
+        if (applications.size() > catalog_limits::applications)
+            throw std::runtime_error(QCoreApplication::translate(
+                                         "XLibrary", "The JSON catalog exceeds 50000 applications. Import cancelled.")
+                                         .toStdString());
         QVector<app_record> records;
-        for (const auto &value : root.value("applications").toArray()) {
+        for (const auto &value : applications) {
             const auto fail = [&](const QString &field, const QString &reason) {
                 throw std::runtime_error(
                     QCoreApplication::translate("XLibrary",
@@ -604,6 +646,8 @@ void DesktopService::import_catalog(const QString &path) {
                              "a tag must contain 1 to 64 characters, without spaces, commas, #, or null characters"));
                 record.tags.append(name);
             }
+            if (record.tags.size() > catalog_limits::tags_per_application)
+                fail("tags", QCoreApplication::translate("XLibrary", "at most 256 tags are allowed"));
             record.tags.removeDuplicates();
             if (record.name.isEmpty() || record.name.size() > 256)
                 fail("name", QCoreApplication::translate("XLibrary", "the name must contain 1 to 256 characters"));
@@ -616,6 +660,11 @@ void DesktopService::import_catalog(const QString &path) {
             if (!record.working_directory.isEmpty() && !QFileInfo(record.working_directory).isAbsolute())
                 fail("working_directory",
                      QCoreApplication::translate("XLibrary", "expected an empty string or an absolute path"));
+            try {
+                CatalogStore::validate_application(record);
+            } catch (const std::invalid_argument &error) {
+                fail("application", QString::fromUtf8(error.what()));
+            }
             records.append(std::move(record));
         }
         const auto count = worker.store->import_records(records);

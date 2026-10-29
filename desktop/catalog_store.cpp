@@ -9,17 +9,28 @@
 #include "localization.h"
 #include "path_helpers.h"
 
-namespace {
-void validate_application(const app_record &record) {
+void CatalogStore::validate_application(const app_record &record) {
     if (record.name.trimmed().isEmpty() || record.name.size() > 256 || !QFileInfo(record.path).isAbsolute() ||
         record.name.contains(QChar::Null) || record.path.contains(QChar::Null) ||
         record.arguments.contains(QChar::Null) || record.working_directory.contains(QChar::Null)) {
         throw std::invalid_argument(
             QCoreApplication::translate("XLibrary", "Invalid application name or path.").toStdString());
     }
+#ifdef Q_OS_WIN
+    if (QFileInfo(record.path).suffix().isEmpty())
+        throw std::invalid_argument(
+            QCoreApplication::translate("XLibrary", "A Windows target requires a filename extension.").toStdString());
+#endif
     if (!record.working_directory.isEmpty() && !QFileInfo(record.working_directory).isAbsolute()) {
         throw std::invalid_argument(
             QCoreApplication::translate("XLibrary", "The working directory must be an absolute path.").toStdString());
+    }
+    if (record.path.size() > catalog_limits::text_length || record.arguments.size() > catalog_limits::text_length ||
+        record.working_directory.size() > catalog_limits::text_length ||
+        record.tags.size() > catalog_limits::tags_per_application) {
+        throw std::invalid_argument(
+            QCoreApplication::translate("XLibrary", "Paths and arguments: up to 32768 characters; tags: up to 256.")
+                .toStdString());
     }
     for (const auto &tag : record.tags) {
         if (!valid_tag_name(tag))
@@ -29,6 +40,7 @@ void validate_application(const app_record &record) {
     }
 }
 
+namespace {
 class Statement {
     sqlite3 *connection;
     std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> statement{nullptr, &sqlite3_finalize};
