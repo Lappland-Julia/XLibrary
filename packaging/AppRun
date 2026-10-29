@@ -4,7 +4,7 @@ set -eu
 APPDIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
 export APPDIR
 
-# Дочерние приложения должны получать исходные библиотеки и плагины рабочего стола.
+# Child applications must receive the original desktop libraries and plugins.
 export XLIBRARY_ORIGINAL_LD_LIBRARY_PATH="${LD_LIBRARY_PATH-}"
 export XLIBRARY_ORIGINAL_LD_LIBRARY_PATH_SET="${LD_LIBRARY_PATH+x}"
 export XLIBRARY_ORIGINAL_QT_PLUGIN_PATH="${QT_PLUGIN_PATH-}"

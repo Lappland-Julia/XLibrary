@@ -4,7 +4,7 @@
 
 QString Localization::ShortcutTranslator::translate(const char *context, const char *source_text, const char *,
                                                     int) const {
-    // Меняем только подпись Qt; коды клавиш и PortableText в настройках остаются прежними.
+    // Change only the Qt label; key codes and PortableText in settings remain unchanged.
     if (qstrcmp(context, "QShortcut") == 0 && qstrcmp(source_text, "Return") == 0)
         return QStringLiteral("Enter");
     return {};
@@ -26,7 +26,7 @@ void Localization::apply(const QString &preference) {
             }
         }
     }
-    // Английский текст исходников остаётся доступен при неизвестной локали или ошибке загрузки.
+    // English source text remains available for unknown locales or translation loading failures.
     if (language != "ru" || !russian.load(":/i18n/xlibrary_ru.qm") || !qt_russian.load(":/i18n/qt_widgets_ru.qm"))
         return;
     QCoreApplication::installTranslator(&qt_russian);

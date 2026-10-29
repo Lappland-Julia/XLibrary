@@ -10,7 +10,7 @@ constexpr auto token_setting = "updates/github_token_saved";
 }
 
 GithubTokenStore::GithubTokenStore(QSettings &settings, QObject *parent) : QObject(parent), settings(settings) {
-    // Разные локальные профили не должны перезаписывать токены друг друга.
+    // Separate local profiles must not overwrite each other's tokens.
     const auto profile = QFileInfo(settings.fileName()).absoluteFilePath().toUtf8();
     key =
         "github-updates/" + QString::fromLatin1(QCryptographicHash::hash(profile, QCryptographicHash::Sha256).toHex());
@@ -65,7 +65,7 @@ void GithubTokenStore::start_job(QKeychain::Job *job, operation action) {
 void GithubTokenStore::read() {
     if (busy)
         return;
-    // Без настроенного токена проверка не требует доступного или разблокированного хранилища.
+    // Without a configured token, checks do not require an available or unlocked credential store.
     if (!has_token()) {
         emit read_finished({});
         return;

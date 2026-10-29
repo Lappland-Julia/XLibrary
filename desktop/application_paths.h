@@ -21,7 +21,7 @@ inline bool bundled_runtime() {
     const auto app_dir = qEnvironmentVariable("APPDIR");
     const QFileInfo bundled_binary(QDir(app_dir).filePath("usr/bin/XLibrary"));
     const auto current_binary = QFileInfo(QCoreApplication::applicationFilePath()).canonicalFilePath();
-    // APPIMAGE может принадлежать другому приложению, запустившему XLibrary.
+    // APPIMAGE may belong to another application that launched XLibrary.
     if (!QFileInfo(app_dir).isAbsolute() || !QFileInfo(app_dir).isDir() || current_binary.isEmpty() ||
         bundled_binary.canonicalFilePath() != current_binary)
         throw std::runtime_error(
@@ -36,7 +36,7 @@ inline QString appimage_file() {
     if (!bundled_runtime())
         return {};
     const auto image = qEnvironmentVariable("XLIBRARY_APPIMAGE");
-    // Извлечённый вручную AppDir использует обычный portable-профиль.
+    // A manually extracted AppDir uses the regular portable profile.
     if (image.isEmpty())
         return {};
     const QFileInfo image_info(image);

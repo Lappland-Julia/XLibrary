@@ -9,7 +9,7 @@
 
 double WindowManager::get_screen_brightness() const {
 #ifdef _WIN32
-    // Размеры только главного монитора
+    // Use only the primary monitor's dimensions.
     const int width = GetSystemMetrics(SM_CXSCREEN);
     const int height = GetSystemMetrics(SM_CYSCREEN);
 
@@ -28,7 +28,7 @@ double WindowManager::get_screen_brightness() const {
         return -1.0;
     }
 
-    // Создание 32-битного изображения
+    // Create a 32-bit image.
     BITMAPINFO info{};
     info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     info.bmiHeader.biWidth = width;
@@ -58,7 +58,7 @@ double WindowManager::get_screen_brightness() const {
         return -1.0;
     }
 
-    // Главный монитор начинается с (0, 0)
+    // The primary monitor starts at (0, 0).
     const BOOL captured = BitBlt(memoryDC, 0, 0, width, height, screenDC, 0, 0, SRCCOPY | CAPTUREBLT);
 
     double average = -1.0;
@@ -82,7 +82,7 @@ double WindowManager::get_screen_brightness() const {
         average = total / pixelCount;
     }
 
-    // Освобождение ресурсов
+    // Release resources.
     SelectObject(memoryDC, oldBitmap);
     DeleteObject(bitmap);
     DeleteDC(memoryDC);
@@ -90,7 +90,7 @@ double WindowManager::get_screen_brightness() const {
 
     return average;
 #else
-    // Wayland не предоставляет приложению снимок экрана без разрешения пользователя.
+    // Wayland does not provide screen capture without the user's permission.
     return -1.0;
 #endif
 }

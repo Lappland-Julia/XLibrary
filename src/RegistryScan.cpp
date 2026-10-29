@@ -45,7 +45,7 @@ bool absent(LSTATUS status) {
 
 std::wstring read_string(HKEY key, const wchar_t *name, const registry_source &source,
                          std::vector<scan_issue> &issues) {
-    // RegGetValue автоматически разворачивает переменные в REG_EXPAND_SZ.
+    // RegGetValue automatically expands variables in REG_EXPAND_SZ.
     constexpr DWORD flags = RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ;
     DWORD bytes = 0;
     auto status = RegGetValueW(key, nullptr, name, flags, nullptr, nullptr, &bytes);
@@ -55,7 +55,7 @@ std::wstring read_string(HKEY key, const wchar_t *name, const registry_source &s
         issues.push_back({source, name ? name : L"(Default)", status});
         return {};
     }
-    // Установщик может изменить размер значения между двумя чтениями.
+    // The installer may resize the value between the two reads.
     for (int attempt = 0; attempt != 4; ++attempt) {
         constexpr DWORD max_bytes = 64 * 1024;
         if (bytes > max_bytes) {
@@ -66,7 +66,7 @@ std::wstring read_string(HKEY key, const wchar_t *name, const registry_source &s
             issues.push_back({source, L"Invalid UTF-16 byte count", ERROR_INVALID_DATA});
             return {};
         }
-        // Читаем прямо в строку: отдельный буфер и копия результата не нужны.
+        // Read directly into the string to avoid a separate buffer and a copy.
         std::wstring value(std::max<std::size_t>(1, bytes / sizeof(wchar_t)), L'\0');
         DWORD capacity = static_cast<DWORD>(value.size() * sizeof(wchar_t));
         status = RegGetValueW(key, nullptr, name, flags, nullptr, value.data(), &capacity);
@@ -92,7 +92,7 @@ std::wstring read_string(HKEY key, const wchar_t *name, const registry_source &s
 template <class Visitor>
 void visit_subkeys(registry_scope scope, const wchar_t *branch, std::vector<scan_issue> &issues, Visitor visitor) {
     const HKEY root = scope == registry_scope::current_user ? HKEY_CURRENT_USER : HKEY_LOCAL_MACHINE;
-    // На 32-битной Windows эти флаги игнорируются; возможны повторные записи.
+    // These flags are ignored on 32-bit Windows, so duplicate entries are possible.
     for (REGSAM view : {KEY_WOW64_64KEY, KEY_WOW64_32KEY}) {
         registry_source source{scope, view, branch};
         RegistryKey parent;
@@ -103,7 +103,7 @@ void visit_subkeys(registry_scope scope, const wchar_t *branch, std::vector<scan
             issues.push_back({source, L"RegOpenKeyExW", status});
             continue;
         }
-        // Для имени подраздела достаточно 256 символов с завершающим нулём.
+        // A subkey name fits in 256 characters including the null terminator.
         for (DWORD index = 0;; ++index) {
             wchar_t name[256]{};
             DWORD length = static_cast<DWORD>(std::size(name));
@@ -118,7 +118,7 @@ void visit_subkeys(registry_scope scope, const wchar_t *branch, std::vector<scan
             RegistryKey child;
             status = RegOpenKeyExW(parent.handle, name, 0, KEY_READ | view, &child.handle);
             if (absent(status))
-                continue; // Подраздел удалён во время обхода.
+                continue; // The subkey was deleted during enumeration.
             if (status != ERROR_SUCCESS) {
                 issues.push_back({child_source, L"RegOpenKeyExW", status});
                 continue;
@@ -161,7 +161,7 @@ void scan_app_paths(registry_scope scope, scan_result<discovered_application> &r
                       if (value.empty())
                           return;
                       std::filesystem::path path(value);
-                      // Значение App Paths должно содержать абсолютный путь к EXE.
+                      // The App Paths value must contain an absolute path to the EXE.
                       if (!path.is_absolute() || !equal_ignore_case(path.extension().native(), L".exe")) {
                           result.issues.push_back({source, L"Invalid App Paths EXE", ERROR_INVALID_DATA});
                           return;
@@ -192,9 +192,9 @@ scan_result<uninstall_entry> scan_uninstall(registry_scope scope) {
                                   read(L"UninstallString"),
                                   read(L"QuietUninstallString"),
                                   source};
-            // Сохраняем и безымянные записи; фильтрация интерфейса выполняется отдельно.
-            // Общий подраздел может повториться в обоих представлениях реестра.
-            // Объединяем только одинаковые данные одного подраздела.
+            // Keep unnamed entries too; the UI filters them separately.
+            // The shared subkey may appear in both registry views.
+            // Merge only identical data from the same subkey.
             const auto duplicate =
                 std::find_if(result.entries.begin(), result.entries.end(), [&](const uninstall_entry &old) {
                     return old.source.key == source.key && old.display_name == entry.display_name &&
@@ -224,7 +224,7 @@ std::vector<::Application> make_applications(scan_result<discovered_application>
     if (progress && !progress(0, scan.entries.size()))
         return {};
     for (const auto &entry : scan.entries) {
-        // Конструктор Application сам читает имя EXE.
+        // The Application constructor reads the EXE name itself.
         applications.emplace_back(entry.executable);
         if (progress && !progress(applications.size(), scan.entries.size()))
             return {};
@@ -263,7 +263,7 @@ std::vector<::Application> scan_registry_applications(std::vector<scan_issue> *i
     detail::scan_result<detail::discovered_application> scan;
     detail::scan_app_paths(registry_scope::current_user, scan);
     detail::scan_app_paths(registry_scope::local_machine, scan);
-    // Удаляем дубликаты путей до создания Application.
+    // Deduplicate paths before creating Application objects.
     return detail::make_applications(std::move(scan), issues, progress);
 }
 

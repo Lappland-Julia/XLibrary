@@ -10,7 +10,7 @@
 class Application {
 private:
     std::uint32_t pid = 0;
-    // Копии разделяют дескриптор Windows или пару PID/starttime Linux, защищающую от повторного PID.
+    // Copies share a Windows handle or a Linux PID/starttime pair that guards against PID reuse.
     std::shared_ptr<void> process_handle;
     std::string file_title = "";
     std::filesystem::path file_path = "~";
@@ -26,7 +26,7 @@ public:
     std::filesystem::path get_file_path() const { return this->file_path; }
 
     void set_executable(std::filesystem::path const &file_path);
-    // В Windows возвращает 0, если Shell открыл приложение без доступного PID нового процесса.
+    // On Windows, return 0 if Shell opened the application without an available new process PID.
     std::uint32_t launch();
     std::uint32_t launch(const std::wstring &arguments, const std::filesystem::path &working_directory);
 

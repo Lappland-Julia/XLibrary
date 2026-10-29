@@ -43,7 +43,7 @@ function invoke_cmake([string]$step, [string[]]$command_arguments) {
     }
 }
 
-# Проверяем доступ к EXE до пересборки: запущенное приложение запрещает линкеру его заменить.
+# Check EXE access before rebuilding: a running application prevents the linker from replacing it.
 $runtime_directory = Read-Cache 'CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE' -Optional
 if (-not $runtime_directory) {
     $runtime_directory = Read-Cache 'CMAKE_RUNTIME_OUTPUT_DIRECTORY' -Optional
@@ -70,20 +70,20 @@ $success = $false
 $stage = ''
 
 try {
-    # Проверка IPO/LTO при configure тоже запускает компилятор и требует его DLL в PATH.
+    # The IPO/LTO check during configure also runs the compiler and needs its DLLs in PATH.
     $config = Get-Content -LiteralPath "$build/packaging-config.json" -Raw | ConvertFrom-Json
     $compiler_bin = Split-Path $config.compiler -Parent
     $qt = [IO.Path]::GetFullPath((Join-Path (Read-Cache 'Qt6_DIR') '../../..'))
     $cmake_bin = Split-Path $cmake -Parent
     $build_paths = @($compiler_bin, "$qt/bin", $cmake_bin)
-    # Visual Studio выбирает MSBuild при сборке и может не сохранять его путь в кэше.
+    # Visual Studio selects MSBuild during the build and may not retain its path in the cache.
     $make_program = Read-Cache 'CMAKE_MAKE_PROGRAM' -Optional
     if ($make_program) {
         $generator_bin = Split-Path $make_program -Parent
         if ($generator_bin) { $build_paths += $generator_bin }
     }
     $env:PATH = ($build_paths + $saved_path) -join ';'
-    # Build может перезапустить configure; обновляем версию до выбора имени пакета.
+    # The build may rerun configure; refresh the version before choosing the package name.
     invoke_cmake -step 'Release configuration' -command_arguments @('-S', $repository, '-B', $build)
     $cache = Get-Content -LiteralPath (Join-Path $build 'CMakeCache.txt')
     $config = Get-Content -LiteralPath "$build/packaging-config.json" -Raw | ConvertFrom-Json
@@ -176,7 +176,7 @@ try {
         $runtime_files | Copy-Item -Destination $package
     }
 
-    # Сохраняем исходники распространяемых модулей вместе с лицензиями, включая third-party.
+    # Keep sources for all distributed modules with their licenses, including third-party code.
     $modules = [Collections.Generic.HashSet[string]]::new()
     [void]$modules.Add('qtbase')
     $base_libraries = @('Core', 'Gui', 'Widgets', 'Network', 'Concurrent', 'OpenGL', 'OpenGLWidgets',
@@ -211,7 +211,7 @@ try {
             }
             Write-Output "Using verified Qt source cache: $cached_archive"
         } else {
-            # Незавершённая загрузка не должна становиться пригодным для повторного использования архивом.
+            # An incomplete download must not become a reusable archive.
             $download_path = "$cached_archive.$([guid]::NewGuid().ToString('N')).download"
             try {
                 for ($attempt = 1; $attempt -le 3; ++$attempt) {

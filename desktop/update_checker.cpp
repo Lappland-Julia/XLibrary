@@ -43,7 +43,7 @@ std::optional<release_version> parse_version(const QString &tag) {
 }
 
 int compare_number(const QString &left, const QString &right) {
-    // Сравнение строк не переполняется на больших номерах из внешнего JSON.
+    // String comparison avoids overflow on large version numbers from external JSON.
     if (left.size() != right.size())
         return left.size() < right.size() ? -1 : 1;
     return QString::compare(left, right, Qt::CaseSensitive);
@@ -184,7 +184,7 @@ void UpdateChecker::check(const QString &token) {
     release_page = 0;
     check_key = trimmed_token.isEmpty() ? QByteArray{}
                                         : QCryptographicHash::hash(trimmed_token.toUtf8(), QCryptographicHash::Sha256);
-    // Чтение кэша не продлевает его срок; истёкшие записи удаляются вместе с отпечатками токенов.
+    // Reading the cache does not extend its lifetime; remove expired entries along with token fingerprints.
     for (auto it = check_cache.begin(); it != check_cache.end();) {
         const auto interval = it.key().isEmpty() ? anonymous_check_interval : authenticated_check_interval;
         if (it->age.elapsed() >= interval)
@@ -231,7 +231,7 @@ void UpdateChecker::request_releases() {
 void UpdateChecker::read_response() {
     if (!reply || !reply->isOpen())
         return;
-    // Тело промежуточного redirect не является частью установщика.
+    // An intermediate redirect body is not part of the installer.
     if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() != 200) {
         reply->readAll();
         return;
@@ -361,7 +361,7 @@ void UpdateChecker::select_release() {
     }
     release_tag = latest_release.value("tag_name").toString();
     release_url = QUrl(latest_release.value("html_url").toString());
-    // Старые пакеты содержат pre-release в имени независимо от тега GitHub.
+    // Older packages include pre-release in the filename regardless of the GitHub tag.
 #if defined(Q_OS_WIN) && defined(__MINGW32__)
     const QString compiler = "mingw";
 #elif defined(Q_OS_WIN) && defined(_MSC_VER)
@@ -384,7 +384,7 @@ void UpdateChecker::select_release() {
         if (asset.value("state").toString() != "uploaded" || !asset_link(url, release_tag, name) ||
             !digest_pattern.match(digest).hasMatch() || digest.size() != 71 || size <= 0 || size > installer_limit)
             continue;
-        // Не выбирать произвольно один из нескольких установщиков одинакового назначения.
+        // Do not arbitrarily choose among multiple installers serving the same purpose.
         if (!installer_url.isEmpty()) {
             installer_url.clear();
             break;
@@ -441,7 +441,7 @@ bool UpdateChecker::launch_installer(QString &error) {
     }
     if (!desktop_platform::start_update_installer(installer.fileName(), error))
         return false;
-    // Установщик читает себя после завершения XLibrary; временный файл нужен до конца установки.
+    // The installer reads itself after XLibrary exits; keep the temporary file until installation finishes.
     download_directory->setAutoRemove(false);
     return true;
 }

@@ -10,7 +10,7 @@ constexpr int x11_key_press = KeyPress;
 constexpr int x11_key_release = KeyRelease;
 constexpr int x11_success = Success;
 }
-// Xlib использует макросы с именами перечислений и типов Qt.
+// Xlib defines macros with the same names as Qt enums and types.
 #undef None
 #undef Bool
 #undef Status
@@ -60,7 +60,7 @@ QProcessEnvironment application_environment() {
     auto environment = QProcessEnvironment::systemEnvironment();
     if (!application_paths::bundled_runtime())
         return environment;
-    // Bundled Qt нужен только XLibrary: дочерние приложения используют исходное окружение.
+    // Only XLibrary needs bundled Qt; child applications use the original environment.
     for (const auto &name :
          {QString("LD_LIBRARY_PATH"), QString("QT_PLUGIN_PATH"), QString("QT_QPA_PLATFORM_PLUGIN_PATH")}) {
         const auto original = "XLIBRARY_ORIGINAL_" + name;
@@ -134,7 +134,7 @@ QString unescape_value(const QString &value) {
         else if (escaped == '\\' || escaped == ';')
             result += escaped;
         else {
-            // Exec имеет второй уровень экранирования, который разбирается отдельно.
+            // Exec has a second escaping layer that is parsed separately.
             result += '\\';
             result += escaped;
         }
@@ -308,7 +308,7 @@ QStringList entry_command(const desktop_entry &entry) {
                 throw std::invalid_argument(
                     QCoreApplication::translate("XLibrary", "Unsupported Exec field code in .desktop.").toStdString());
         }
-        // XLibrary запускает приложение без файлов: %f/%F/%u/%U не дают аргументов.
+        // XLibrary launches applications without files, so %f/%F/%u/%U produce no arguments.
         if (!expanded.isEmpty() || !removed_code)
             result.append(expanded);
     }
@@ -516,7 +516,7 @@ bool matches_process(const process_identity &identity, const QString &process_di
     if (identity.executable.isEmpty())
         return false;
     if (identity.executable == executable) {
-        // Интерпретатор общий для множества приложений: различаем запускаемый скрипт.
+        // Many applications share an interpreter; distinguish them by the script being launched.
         const auto program = QFileInfo(identity.executable).fileName();
         if (program.startsWith("python") || program == "perl" || program == "ruby" || program == "node" ||
             program == "java" || program == "bash" || program == "dash" || program == "zsh" || program == "sh") {
@@ -526,14 +526,14 @@ bool matches_process(const process_identity &identity, const QString &process_di
                         arguments.cbegin() + std::min<qsizetype>(1, arguments.size()), arguments.cend(),
                         [&](const QString &item) { return canonical_path(item) == canonical_path(argument); });
             }
-            // -c/-m/-e определяют приложение не хуже пути скрипта; общий интерпретатор сам по себе не подходит.
+            // -c/-m/-e identify the application as well as a script path; the shared interpreter alone is insufficient.
             return identity.arguments.isEmpty() ||
                    (arguments.size() > identity.arguments.size() &&
                     std::equal(identity.arguments.cbegin(), identity.arguments.cend(), arguments.cbegin() + 1));
         }
         return true;
     }
-    // У исполняемого скрипта /proc/exe указывает на интерпретатор, путь скрипта остаётся в argv.
+    // For an executable script, /proc/exe points to the interpreter; the script path remains in argv.
     if (identity.script) {
         for (qsizetype index = 1; index < arguments.size(); ++index) {
             if (arguments[index].startsWith('-'))
@@ -715,7 +715,7 @@ bool desktop_platform::activate_window(const QString &path) {
         const auto process_id = window_property(display.get(), window, process_atom, XA_CARDINAL);
         if (process_id.isEmpty() || !processes.contains(static_cast<quint32>(process_id.front())))
             continue;
-        // EWMH передаёт решение о фокусе оконному менеджеру, включая восстановление свёрнутого окна.
+        // EWMH delegates focus decisions to the window manager, including restoring a minimized window.
         XEvent event{};
         event.xclient.type = ClientMessage;
         event.xclient.window = window;
@@ -902,7 +902,7 @@ QSet<QString> desktop_platform::running_paths(const QVector<app_record> &applica
         try {
             identities.append({absolute_path(application.path), application_identity(application.path)});
         } catch (const std::exception &) {
-            // Удалённая или повреждённая запись не мешает мониторингу остальных приложений.
+            // A deleted or corrupted entry must not prevent monitoring the other applications.
         }
     }
     const QDir proc("/proc");
@@ -1010,7 +1010,7 @@ QImage desktop_platform::application_icon(const QString &path) {
                 return image;
         }
     }
-    // LibraryModel вызывает Linux icon engine в GUI-потоке: QPixmap не переносится в QtConcurrent.
+    // LibraryModel calls the Linux icon engine on the GUI thread: QPixmap cannot move to QtConcurrent.
     QIcon icon;
     if (!icon_name.isEmpty() && !QFileInfo(icon_name).isAbsolute())
         icon = QIcon::fromTheme(icon_name);
@@ -1073,7 +1073,7 @@ QVector<app_record> desktop_platform::discover(bool system_applications, bool us
                 continue;
             }
             desktop_ids.insert(desktop_id);
-            // Даже отключённый источник сохраняет приоритет пользовательского переопределения.
+            // Even a disabled source retains user override priority.
             if ((index == 0 && user_applications) || (index > 0 && system_applications))
                 entries.append(path);
         }
@@ -1153,5 +1153,5 @@ QString desktop_platform::default_global_shortcut() {
 }
 
 void desktop_platform::apply_backdrop(QWidget *, bool, bool) {
-    // Qt рисует полноценный непрозрачный вариант; общедоступного DWM backdrop в Linux нет.
+    // Qt draws a fully opaque version; Linux has no generally available DWM backdrop.
 }

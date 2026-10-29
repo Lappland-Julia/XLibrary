@@ -75,7 +75,7 @@ std::string Application::read_application_name(const std::filesystem::path &exec
     const auto translation_count = translation_size / sizeof(language_and_code_page);
     const wchar_t *field_names[] = {L"FileDescription", L"ProductName"};
 
-    // Сначала ищем описание во всех языках, затем пробуем название продукта.
+    // Look for a description in every language before trying the product name.
     for (const auto *field_name : field_names) {
         for (std::size_t index = 0; index < translation_count; ++index) {
             language_and_code_page translation{};
@@ -97,7 +97,7 @@ std::string Application::read_application_name(const std::filesystem::path &exec
                 continue;
             }
 
-            // Строка принадлежит version_info; копируем её до освобождения буфера.
+            // The string belongs to version_info; copy it before releasing the buffer.
             std::wstring_view name(static_cast<const wchar_t *>(name_data), name_length);
             name = name.substr(0, name.find(L'\0'));
             if (name.empty() || !std::in_range<int>(name.size())) {
@@ -150,7 +150,7 @@ std::uint32_t Application::launch(const std::wstring &arguments, const std::file
 
     std::unique_ptr<void, decltype(&CloseHandle)> process_handle(launch_info.hProcess, &CloseHandle);
     if (!process_handle) {
-        // Shell может передать запрос уже работающему приложению без создания процесса.
+        // Shell may hand off the request to an existing application without creating a process.
         return 0;
     }
 

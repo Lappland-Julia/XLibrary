@@ -42,12 +42,12 @@ if ($Compiler -eq 'mingw') {
 $diagnostics = Join-Path $PSScriptRoot '../../build/package-check'
 New-Item -ItemType Directory -Force -Path $diagnostics | Out-Null
 $diagnostics = (Resolve-Path -LiteralPath $diagnostics).Path
-# Копия исключает изменения пользовательского portable-профиля и проверяет Unicode/пробелы в пути.
+# Use a copy to protect the user's portable profile and check Unicode/spaces in paths.
 $scratch = Join-Path ([IO.Path]::GetTempPath()) "XLibrary проверка $([guid]::NewGuid().ToString('N'))"
 $test_package = Join-Path $scratch 'Пакет с пробелами'
 New-Item -ItemType Directory -Path $scratch | Out-Null
 Copy-Item -LiteralPath $package -Destination $test_package -Recurse
-# Проверяем, что --check-startup не читает и не меняет существующий профиль portable.
+# Verify that --check-startup neither reads nor modifies the existing portable profile.
 New-Item -ItemType Directory -Path "$test_package/data" -Force | Out-Null
 $sentinel = [Text.Encoding]::UTF8.GetBytes('startup must not touch this database')
 [IO.File]::WriteAllBytes("$test_package/data/xlibrary.db", $sentinel)
@@ -63,14 +63,14 @@ try {
         $start_info.UseShellExecute = $false
         $start_info.RedirectStandardOutput = $true
         $start_info.RedirectStandardError = $true
-        # Исключаем установленный Qt и toolchain из окружения запуска.
+        # Exclude installed Qt and toolchains from the launch environment.
         $start_info.Environment['PATH'] = "$env:SystemRoot/System32;$env:SystemRoot"
         foreach ($name in @($start_info.Environment.Keys)) {
             if ($name -match '^(QT_|QML|QTDIR$)') { $start_info.Environment.Remove($name) | Out-Null }
         }
         $start_info.Environment['QT_DEBUG_PLUGINS'] = '1'
         $start_info.Environment['QT_FORCE_STDERR_LOGGING'] = '1'
-        # Некорректный installed-профиль подтверждает приоритет временного профиля startup check.
+        # An invalid installed profile verifies that the temporary startup-check profile takes precedence.
         $start_info.Environment['LOCALAPPDATA'] = 'invalid-relative-profile'
         $process = [System.Diagnostics.Process]::new()
         $process.StartInfo = $start_info

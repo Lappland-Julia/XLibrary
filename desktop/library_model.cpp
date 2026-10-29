@@ -35,7 +35,7 @@ void LibraryModel::request_icon(const QString &path) const {
     pending_icons.insert(path);
     auto *self = const_cast<LibraryModel *>(this);
 #ifdef Q_OS_LINUX
-    // Системные icon engines используют QPixmap и должны выполняться в GUI-потоке.
+    // System icon engines use QPixmap and must run on the GUI thread.
     QTimer::singleShot(0, self, [self, path] {
         const auto image = desktop_platform::application_icon(path);
         self->pending_icons.remove(path);

@@ -47,7 +47,7 @@ protected:
                 QKeyCombination(key_event->modifiers() & ~Qt::KeypadModifier, key_event->keyCombination().key()));
             for (auto *action : application_actions) {
                 if (action->shortcuts().contains(sequence) || action->shortcuts().contains(without_keypad)) {
-                    // Применяем ещё не обработанный запрос до выбора действия и проверки его доступности.
+                    // Apply any pending request before selecting an action and checking its availability.
                     synchronize_search();
                     break;
                 }

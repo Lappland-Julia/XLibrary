@@ -99,7 +99,7 @@ jobs:
   linux-packages:
     name: linux-AppImage-and-DEB
     runs-on: ubuntu-24.04
-    # Сборка на целевой базе не требует обновлять Qt и glibc в Debian 13.
+    # Building on the target baseline avoids upgrading Qt and glibc in Debian 13.
     container: debian:13
     timeout-minutes: 10
     steps:
@@ -116,7 +116,7 @@ jobs:
           persist-credentials: false
 
       - name: Allow packaging to read checkout metadata
-        # Checkout задаёт safe.directory во временном HOME; упаковщик работает в обычном HOME контейнера.
+        # Checkout sets safe.directory in a temporary HOME; the packager uses the container's regular HOME.
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Configure Release

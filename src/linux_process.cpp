@@ -113,7 +113,7 @@ std::vector<std::string> split_arguments(std::string_view arguments) {
     return result;
 }
 
-// Ожидаем только своих детей: глобальный waitpid(-1) перехватил бы процессы Qt.
+// Wait only for our own children: a global waitpid(-1) would reap Qt processes.
 class ChildReaper {
     std::mutex mutex;
     std::condition_variable_any wake;
@@ -232,7 +232,7 @@ std::optional<xlibrary::process_identity> xlibrary::read_process_identity(std::u
     if (error) {
         return std::nullopt;
     }
-    // comm заключён в скобки и сам может содержать пробелы, скобки и переводы строки.
+    // comm is enclosed in parentheses and may itself contain spaces, parentheses, and newlines.
     const auto name_end = contents.rfind(')');
     if (name_end == std::string::npos) {
         error = std::make_error_code(std::errc::io_error);
@@ -301,7 +301,7 @@ std::optional<xlibrary::process_identity> xlibrary::find_process(const std::file
             if (identity && process_matches(*identity, executable_path, candidate_error)) {
                 return identity;
             }
-            // Чужие процессы могут быть недоступны из-за ptrace/hidepid; это не ошибка нашего приложения.
+            // Other processes may be inaccessible due to ptrace/hidepid; this is not an application error.
         }
         iterator.increment(error);
     }
@@ -323,7 +323,7 @@ xlibrary::process_identity xlibrary::launch_process(const std::filesystem::path 
         argument_pointers.push_back(argument.data());
     }
     argument_pointers.push_back(nullptr);
-    // Всё, что выделяет память или берёт блокировки, выполняется до fork.
+    // Perform all memory allocations and locking before fork.
     const auto *executable = executable_path.c_str();
     const auto *directory = working_directory.empty() ? nullptr : working_directory.c_str();
     auto *const *argv = argument_pointers.data();
@@ -353,7 +353,7 @@ xlibrary::process_identity xlibrary::launch_process(const std::filesystem::path 
         _exit(127);
     }
     reaper.watch(process_id);
-    // До чтения starttime не даём reaper освободить PID завершившегося ребёнка.
+    // Prevent the reaper from releasing the exited child's PID until starttime has been read.
     close(launch_pipe.descriptors[1]);
     launch_pipe.descriptors[1] = -1;
     int launch_error = 0;

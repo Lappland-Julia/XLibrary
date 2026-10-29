@@ -1,4 +1,4 @@
-# Параметры зависимости ограничены функцией и не меняют настройки XLibrary.
+# Keep dependency options scoped to the function so they do not affect XLibrary settings.
 function(xlibrary_add_qtkeychain)
     set(BUILD_SHARED_LIBS OFF)
     set(BUILD_WITH_QT5 OFF)
@@ -19,7 +19,7 @@ function(xlibrary_add_qtkeychain)
     if(WIN32)
         set(xlibrary_keychain_license_dir "licenses")
     else()
-        # QtKeychain загружает libsecret через QLibrary: упаковщик не найдёт её по DT_NEEDED.
+        # QtKeychain loads libsecret via QLibrary; the packager cannot find it through DT_NEEDED.
         find_library(xlibrary_secret_library NAMES secret-1 REQUIRED)
         set(xlibrary_secret_library "${xlibrary_secret_library}" PARENT_SCOPE)
         set(xlibrary_keychain_license_dir "${CMAKE_INSTALL_DATADIR}/XLibrary/licenses")

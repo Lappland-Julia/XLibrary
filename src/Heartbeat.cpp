@@ -45,7 +45,7 @@ std::pair<bool, DWORD> check_process_handle(HANDLE process_handle, const std::ws
     if (comparison == 0) {
         return {false, GetLastError()};
     }
-    // Процесс мог завершиться во время чтения пути.
+    // The process may have exited while its path was being read.
     const auto final_wait = WaitForSingleObject(process_handle, 0);
     if (final_wait == WAIT_FAILED) {
         return {false, GetLastError()};
@@ -87,7 +87,7 @@ Heartbeat::Heartbeat(std::uint32_t process_id, const std::filesystem::path &exec
             process_handle.reset();
         }
 
-        // Firefox и другие приложения могут передать запуск уже работающему экземпляру.
+        // Firefox and other applications may hand off the launch to an existing instance.
         const auto snapshot_handle = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if (snapshot_handle == INVALID_HANDLE_VALUE) {
             return std::pair<bool, DWORD>{false, GetLastError()};
@@ -122,7 +122,7 @@ Heartbeat::Heartbeat(std::uint32_t process_id, const std::filesystem::path &exec
 
             const auto [alive, error_code] = check_process_handle(candidate.get(), expected_path);
             if (alive) {
-                // Удерживаем проверенный дескриптор, чтобы повторное использование PID его не подменило.
+                // Keep the verified handle so PID reuse cannot substitute a different process.
                 process_handle = std::move(candidate);
                 return std::pair<bool, DWORD>{true, 0};
             }

@@ -25,7 +25,7 @@ std::filesystem::path Database::get_database_path() {
             return data_path / "XLibrary" / "xlibrary.db";
         }
     }
-    // По XDG относительное значение переменной не используется.
+    // XDG does not allow relative values for this variable.
     const auto *home = std::getenv("HOME");
     if (home == nullptr || !std::filesystem::path(home).is_absolute()) {
         throw std::runtime_error("An absolute HOME or XDG_DATA_HOME is required");

@@ -319,7 +319,7 @@ void DesktopService::launch(qint64 id, bool new_instance, bool scenario) {
             if (!activate || !desktop_platform::activate_window(it->path)) {
                 desktop_platform::launch_application(*it);
             }
-            // Ошибка истории не должна превращать успешный запуск в неудачный или повторный.
+            // A history error must not turn a successful launch into a failed or repeated launch.
             emit worker.launched(id, true, generation);
             try {
                 worker.store->record_launch(id);
@@ -402,7 +402,7 @@ void DesktopService::discover() {
     discovery_cancelled = std::make_shared<discovery_control>();
     scan_progress = {-1, 0, 0, QCoreApplication::translate("XLibrary", "Preparing the application list…")};
     emit discovery_changed();
-    // Обновления из обоих рабочих потоков приходят в UI не чаще смены процента или этапа.
+    // Updates from both worker threads reach the UI only when the percentage or stage changes.
     const std::function<void(const discovery_progress &)> report_progress =
         [this, cancelled = discovery_cancelled, last_percent = -2,
          last_stage = QString{}](const discovery_progress &progress) mutable {

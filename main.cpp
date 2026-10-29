@@ -78,7 +78,7 @@ int main(int argc, char *argv[]) {
         if (!server.listen(server_name))
             throw std::runtime_error(
                 QCoreApplication::translate("XLibrary", "Could not open the XLibrary local channel.").toStdString());
-        // Portable и проверка запуска используют свой каталог без подмены окружения дочерних приложений.
+        // Portable mode and startup checks use their own directory without replacing the child process environment.
         const auto database_path = (portable || check_startup) ? profile + "/xlibrary.db" : QString{};
         DesktopService service(nullptr, profile, database_path);
         if (!service.settings.isWritable())

@@ -15,17 +15,17 @@ enum class registry_scope { current_user, local_machine };
 
 struct registry_source {
     registry_scope scope;
-    std::uint32_t view; // Флаг KEY_WOW64_32KEY или KEY_WOW64_64KEY.
+    std::uint32_t view; // KEY_WOW64_32KEY or KEY_WOW64_64KEY flag.
     std::wstring key;
 };
 
 struct scan_issue {
     registry_source source;
     std::wstring operation;
-    std::int32_t error; // Код ошибки Win32.
+    std::int32_t error; // Win32 error code.
 };
 
-// Сведения об установке не являются объектами Application для запуска.
+// Installation records are not launchable Application objects.
 struct uninstall_entry {
     std::wstring display_name;
     std::wstring display_version;
@@ -37,16 +37,16 @@ struct uninstall_entry {
     registry_source source;
 };
 
-// Если issues != nullptr, ошибки дописываются в переданный вектор.
-// Исключения конструктора Application не подавляются.
+// If issues != nullptr, append errors to the supplied vector.
+// Do not suppress Application constructor exceptions.
 std::vector<::Application> scan_app_paths_current_user(std::vector<scan_issue> *issues = nullptr);
 std::vector<::Application> scan_app_paths_local_machine(std::vector<scan_issue> *issues = nullptr);
-// Счётчик относится к уникальным существующим EXE; false из callback отменяет чтение их метаданных.
+// Count unique existing EXEs; returning false from the callback cancels metadata reads.
 using registry_progress = std::function<bool(std::size_t, std::size_t)>;
 std::vector<::Application> scan_registry_applications(std::vector<scan_issue> *issues = nullptr,
                                                       const registry_progress &progress = {});
 
-// Отдельные списки: никогда не объединяются со списком Application.
+// Keep these lists separate; never merge them with the Application list.
 std::vector<uninstall_entry> scan_uninstall_current_user(std::vector<scan_issue> *issues = nullptr);
 std::vector<uninstall_entry> scan_uninstall_local_machine(std::vector<scan_issue> *issues = nullptr);
 
