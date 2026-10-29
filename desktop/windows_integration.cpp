@@ -162,8 +162,8 @@ QSet<QString> desktop_platform::running_paths(const QVector<app_record> &applica
     return paths;
 }
 
-bool desktop_platform::activate_window(const QString &path) {
-    window_search search{QDir::toNativeSeparators(path), nullptr};
+bool desktop_platform::activate_window(const app_record &record) {
+    window_search search{QDir::toNativeSeparators(record.path), nullptr};
     EnumWindows(find_window, reinterpret_cast<LPARAM>(&search));
     if (!search.window) {
         return false;
@@ -180,7 +180,9 @@ bool desktop_platform::activate_window(const QString &path) {
     return true;
 }
 
-void desktop_platform::launch_application(const app_record &record) {
+void desktop_platform::launch_application(const app_record &record, launch_mode mode) {
+    if (mode == launch_mode::activate && activate_window(record))
+        return;
     const ComScope com;
     Application application(record.name.toStdString(), std::filesystem::path(record.path.toStdWString()));
     const auto directory =

@@ -684,12 +684,8 @@ public:
 #endif
 };
 
-bool desktop_platform::activate_window(const QString &path) {
-    if (QFileInfo(path).suffix() == "desktop") {
-        const auto entry = read_entry(path);
-        if (activate_dbus(entry))
-            return true;
-    }
+bool desktop_platform::activate_window(const app_record &record) {
+    const auto &path = record.path;
     if (wayland_session())
         return false;
 #ifdef XLIBRARY_HAVE_X11
@@ -924,13 +920,16 @@ QSet<QString> desktop_platform::running_paths(const QVector<app_record> &applica
     return result;
 }
 
-void desktop_platform::launch_application(const app_record &record) {
+void desktop_platform::launch_application(const app_record &record, launch_mode mode) {
+    if (mode == launch_mode::activate && activate_window(record))
+        return;
     QStringList command;
     QString directory = record.working_directory;
     if (QFileInfo(record.path).suffix() == "desktop") {
         const auto entry = read_entry(record.path);
         validate_entry(entry);
-        if (record.arguments.isEmpty() && activate_dbus(entry))
+        if (mode != launch_mode::new_instance && record.arguments.isEmpty() && record.working_directory.isEmpty() &&
+            activate_dbus(entry))
             return;
         command = entry_command(entry);
         command.append(split_command(record.arguments));

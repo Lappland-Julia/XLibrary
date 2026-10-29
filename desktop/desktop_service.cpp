@@ -303,8 +303,11 @@ void DesktopService::launch(qint64 id, bool new_instance, bool scenario) {
     }
     launching.insert(id);
     const auto generation = scenario ? scenario_generation->load() : 0;
-    const bool activate = !new_instance && settings.value("behavior/relaunch", "activate").toString() == "activate";
-    enqueue("launch", [id, activate, generation, token = scenario_generation](CatalogWorker &worker) {
+    const auto mode = new_instance ? desktop_platform::launch_mode::new_instance
+                      : settings.value("behavior/relaunch", "activate").toString() == "activate"
+                          ? desktop_platform::launch_mode::activate
+                          : desktop_platform::launch_mode::launch;
+    enqueue("launch", [id, mode, generation, token = scenario_generation](CatalogWorker &worker) {
         try {
             if (generation && token->load() != generation) {
                 emit worker.launched(id, false, generation);
@@ -316,9 +319,7 @@ void DesktopService::launch(qint64 id, bool new_instance, bool scenario) {
                 throw std::runtime_error(
                     QCoreApplication::translate("XLibrary", "The application was not found in the library.")
                         .toStdString());
-            if (!activate || !desktop_platform::activate_window(it->path)) {
-                desktop_platform::launch_application(*it);
-            }
+            desktop_platform::launch_application(*it, mode);
             // A history error must not turn a successful launch into a failed or repeated launch.
             emit worker.launched(id, true, generation);
             try {
