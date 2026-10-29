@@ -203,8 +203,7 @@ bool xlibrary::script_process_matches(std::uint32_t process_id, const std::files
         if (interpreter_arguments.empty())
             return false;
         auto command = interpreter_arguments.front();
-        const bool split =
-            command.starts_with("-S ") || command.starts_with("-S\t") || command.starts_with("--split-string=");
+        const bool split = command.starts_with("-S") || command.starts_with("--split-string=");
         if (split) {
             command.erase(0, command.starts_with("--split-string=") ? 15 : 2);
             try {
