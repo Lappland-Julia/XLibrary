@@ -708,8 +708,11 @@ void DesktopService::import_catalog(const QString &path) {
             record.favorite = object.value("favorite").toBool();
             if (object.contains("tags") && !object.value("tags").isArray())
                 fail("tags", QCoreApplication::translate("XLibrary", "expected an array of strings"));
+            const auto tags = object.value("tags").toArray();
+            if (tags.size() > catalog_limits::tags_per_application)
+                fail("tags", QCoreApplication::translate("XLibrary", "at most 256 tags are allowed"));
             qsizetype tag_index = 0;
-            for (const auto &tag : object.value("tags").toArray()) {
+            for (const auto &tag : tags) {
                 const auto field = QString("tags[%1]").arg(++tag_index);
                 if (!tag.isString())
                     fail(field, QCoreApplication::translate("XLibrary", "expected a string"));
@@ -721,8 +724,6 @@ void DesktopService::import_catalog(const QString &path) {
                              "a tag must contain 1 to 64 characters, without spaces, commas, #, or null characters"));
                 record.tags.append(name);
             }
-            if (record.tags.size() > catalog_limits::tags_per_application)
-                fail("tags", QCoreApplication::translate("XLibrary", "at most 256 tags are allowed"));
             record.tags.removeDuplicates();
             if (record.name.isEmpty() || record.name.size() > 256)
                 fail("name", QCoreApplication::translate("XLibrary", "the name must contain 1 to 256 characters"));

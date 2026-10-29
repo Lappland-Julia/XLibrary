@@ -1988,5 +1988,37 @@ Automatic installation is unavailable for this copy or release. Follow the relea
         <source>Runs the launch command directly. The application may reuse an existing window.</source>
         <translation>Выполняет команду запуска напрямую. Приложение может использовать уже открытое окно.</translation>
     </message>
+    <message>
+        <source>Paths and arguments: up to 32768 characters; tags: up to 256.</source>
+        <translation>Пути и аргументы: до 32 768 символов; теги: до 256.</translation>
+    </message>
+    <message>
+        <source>A Windows target requires a filename extension.</source>
+        <translation>Для цели Windows требуется расширение имени файла.</translation>
+    </message>
+    <message>
+        <source>The JSON catalog exceeds 32 MiB or 50000 applications. Export was not saved. Use a database backup for a larger library.</source>
+        <translation>Каталог JSON превышает 32 МиБ или 50 000 приложений. Экспорт не сохранён. Для большой библиотеки используйте резервную копию базы данных.</translation>
+    </message>
+    <message>
+        <source>Cannot export %1: %2</source>
+        <translation>Невозможно экспортировать %1: %2</translation>
+    </message>
+    <message>
+        <source>Could not read the import file.</source>
+        <translation>Не удалось прочитать файл импорта.</translation>
+    </message>
+    <message>
+        <source>The JSON catalog exceeds 32 MiB. Import cancelled.</source>
+        <translation>Каталог JSON превышает 32 МиБ. Импорт отменён.</translation>
+    </message>
+    <message>
+        <source>The JSON catalog exceeds 50000 applications. Import cancelled.</source>
+        <translation>Каталог JSON содержит более 50 000 приложений. Импорт отменён.</translation>
+    </message>
+    <message>
+        <source>at most 256 tags are allowed</source>
+        <translation>допускается не более 256 тегов</translation>
+    </message>
 </context>
 </TS>
