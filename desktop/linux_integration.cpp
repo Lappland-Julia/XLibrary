@@ -1,3 +1,4 @@
+#include "Linux/LinuxProcessor.h"
 #include "localization.h"
 #ifdef XLIBRARY_HAVE_X11
 #include <X11/keysym.h>
@@ -53,6 +54,7 @@ constexpr int x11_success = Success;
 #include <stdexcept>
 
 #include "application_paths.h"
+#include "path_helpers.h"
 #include "platform_integration.h"
 
 namespace {
@@ -520,27 +522,28 @@ bool matches_process(const process_identity &identity, const QString &process_di
         const auto program = QFileInfo(identity.executable).fileName();
         if (program.startsWith("python") || program == "perl" || program == "ruby" || program == "node" ||
             program == "java" || program == "bash" || program == "dash" || program == "zsh" || program == "sh") {
-            for (const auto &argument : identity.arguments) {
-                if (QFileInfo(argument).isAbsolute() && QFileInfo(argument).isFile())
-                    return std::any_of(
-                        arguments.cbegin() + std::min<qsizetype>(1, arguments.size()), arguments.cend(),
-                        [&](const QString &item) { return canonical_path(item) == canonical_path(argument); });
+            if (arguments.size() <= identity.arguments.size())
+                return false;
+            for (qsizetype index = 0; index < identity.arguments.size(); ++index) {
+                const auto &expected = identity.arguments[index];
+                auto actual = arguments[index + 1];
+                if (QFileInfo(expected).isAbsolute() && QFileInfo(expected).isFile()) {
+                    if (QFileInfo(actual).isRelative())
+                        actual = QFileInfo(process_directory + "/cwd").symLinkTarget() + '/' + actual;
+                    if (canonical_path(actual) != canonical_path(expected))
+                        return false;
+                } else if (actual != expected) {
+                    return false;
+                }
             }
-            // -c/-m/-e identify the application as well as a script path; the shared interpreter alone is insufficient.
-            return identity.arguments.isEmpty() ||
-                   (arguments.size() > identity.arguments.size() &&
-                    std::equal(identity.arguments.cbegin(), identity.arguments.cend(), arguments.cbegin() + 1));
+            return true;
         }
         return true;
     }
     // For an executable script, /proc/exe points to the interpreter; the script path remains in argv.
-    if (identity.script) {
-        for (qsizetype index = 1; index < arguments.size(); ++index) {
-            if (arguments[index].startsWith('-'))
-                continue;
-            return QFileInfo(arguments[index]).isAbsolute() && canonical_path(arguments[index]) == identity.executable;
-        }
-    }
+    if (identity.script)
+        return xlibrary::script_process_matches(QFileInfo(process_directory).fileName().toUInt(),
+                                                filesystem_path(identity.executable));
     return false;
 }
 
@@ -684,12 +687,8 @@ public:
 #endif
 };
 
-bool desktop_platform::activate_window(const QString &path) {
-    if (QFileInfo(path).suffix() == "desktop") {
-        const auto entry = read_entry(path);
-        if (activate_dbus(entry))
-            return true;
-    }
+bool desktop_platform::activate_window(const app_record &record) {
+    const auto &path = record.path;
     if (wayland_session())
         return false;
 #ifdef XLIBRARY_HAVE_X11
@@ -924,13 +923,34 @@ QSet<QString> desktop_platform::running_paths(const QVector<app_record> &applica
     return result;
 }
 
-void desktop_platform::launch_application(const app_record &record) {
+QString desktop_platform::new_instance_error(const app_record &record) {
+    if (QFileInfo(record.path).suffix() != "desktop")
+        return {};
+    try {
+        const auto entry = read_entry(record.path);
+        validate_entry(entry);
+        if (entry.values.value("Exec").isEmpty())
+            return QCoreApplication::translate("XLibrary",
+                                               "Only activation is available: this desktop entry has no Exec command.");
+        const auto command = entry_command(entry);
+        if (executable_path(command.front()).isEmpty())
+            return QCoreApplication::translate("XLibrary", "The executable specified by Exec is unavailable.");
+    } catch (const std::exception &error) {
+        return QString::fromUtf8(error.what());
+    }
+    return {};
+}
+
+void desktop_platform::launch_application(const app_record &record, launch_mode mode) {
+    if (mode == launch_mode::activate && activate_window(record))
+        return;
     QStringList command;
     QString directory = record.working_directory;
     if (QFileInfo(record.path).suffix() == "desktop") {
         const auto entry = read_entry(record.path);
         validate_entry(entry);
-        if (record.arguments.isEmpty() && activate_dbus(entry))
+        if (mode != launch_mode::new_instance && record.arguments.isEmpty() && record.working_directory.isEmpty() &&
+            activate_dbus(entry))
             return;
         command = entry_command(entry);
         command.append(split_command(record.arguments));
@@ -1021,6 +1041,7 @@ QImage desktop_platform::application_icon(const QString &path) {
 
 app_record desktop_platform::resolve_application(const QString &path) {
     app_record result;
+    result.discovery_source = path;
     result.path = absolute_path(path);
     const QFileInfo info(result.path);
     if (!info.isFile())

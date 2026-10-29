@@ -162,8 +162,8 @@ QSet<QString> desktop_platform::running_paths(const QVector<app_record> &applica
     return paths;
 }
 
-bool desktop_platform::activate_window(const QString &path) {
-    window_search search{QDir::toNativeSeparators(path), nullptr};
+bool desktop_platform::activate_window(const app_record &record) {
+    window_search search{QDir::toNativeSeparators(record.path), nullptr};
     EnumWindows(find_window, reinterpret_cast<LPARAM>(&search));
     if (!search.window) {
         return false;
@@ -180,7 +180,13 @@ bool desktop_platform::activate_window(const QString &path) {
     return true;
 }
 
-void desktop_platform::launch_application(const app_record &record) {
+QString desktop_platform::new_instance_error(const app_record &) {
+    return {};
+}
+
+void desktop_platform::launch_application(const app_record &record, launch_mode mode) {
+    if (mode == launch_mode::activate && activate_window(record))
+        return;
     const ComScope com;
     Application application(record.name.toStdString(), std::filesystem::path(record.path.toStdWString()));
     const auto directory =
@@ -255,6 +261,7 @@ QImage desktop_platform::application_icon(const QString &path) {
 app_record desktop_platform::resolve_application(const QString &path) {
     const ComScope com;
     app_record result;
+    result.discovery_source = path;
     result.path = QFileInfo(path).absoluteFilePath();
     if (QFileInfo(path).suffix().compare("lnk", Qt::CaseInsensitive) == 0) {
         IShellLinkW *raw_link = nullptr;

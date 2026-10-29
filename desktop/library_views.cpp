@@ -5,15 +5,18 @@
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QEvent>
+#include <QFileDialog>
 #include <QFileInfo>
 #include <QHeaderView>
 #include <QKeyEvent>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMenu>
+#include <QMessageBox>
 #include <QPainter>
 #include <QPlainTextEdit>
 #include <QProgressBar>
+#include <QPushButton>
 #include <QResizeEvent>
 #include <QSignalBlocker>
 #include <QStackedLayout>
@@ -555,6 +558,33 @@ QWidget *library(const ui_context &context, QWidget *parent) {
     empty_actions_layout->addWidget(action_button(context.actions.value("add_application")));
     empty_actions_layout->addWidget(action_button(context.actions.value("discover")));
     empty_layout->addWidget(empty_actions, 0, Qt::AlignHCenter);
+    hint->setWordWrap(true);
+    hint->setTextFormat(Qt::PlainText);
+    hint->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    auto *recovery_actions = new QWidget;
+    auto *recovery_layout = new QVBoxLayout(recovery_actions);
+    auto *retry = new QPushButton(QCoreApplication::translate("XLibrary", "Retry"));
+    auto *profile = new QPushButton(QCoreApplication::translate("XLibrary", "Open profile folder"));
+    auto *restore = new QPushButton(QCoreApplication::translate("XLibrary", "Restore backup…"));
+    recovery_layout->addWidget(retry);
+    recovery_layout->addWidget(profile);
+    recovery_layout->addWidget(restore);
+    empty_layout->addWidget(recovery_actions, 0, Qt::AlignHCenter);
+    QObject::connect(retry, &QPushButton::clicked, service, &DesktopService::retry_library);
+    QObject::connect(profile, &QPushButton::clicked, service, &DesktopService::open_profile_folder);
+    QObject::connect(restore, &QPushButton::clicked, widget, [=] {
+        const auto path =
+            QFileDialog::getOpenFileName(widget, QCoreApplication::translate("XLibrary", "Select a SQLite backup"),
+                                         QFileInfo(service->library_path()).absolutePath());
+        if (path.isEmpty())
+            return;
+        if (QMessageBox::question(
+                widget, QCoreApplication::translate("XLibrary", "Restore library"),
+                QCoreApplication::translate(
+                    "XLibrary", "Replace the library with this backup? The current database files will be preserved."),
+                QMessageBox::Yes | QMessageBox::No, QMessageBox::No) == QMessageBox::Yes)
+            service->restore_library(path);
+    });
     empty_layout->addStretch();
     stack->addWidget(empty);
     auto *library_transition = new PageTransition(stack_widget);
@@ -583,6 +613,9 @@ QWidget *library(const ui_context &context, QWidget *parent) {
         const auto *previous_page = stack->currentWidget();
         stack->setCurrentWidget(has_rows ? static_cast<QWidget *>(view) : empty);
         empty_actions->setVisible(no_apps);
+        const bool failed = !service->is_ready() && !service->is_opening() && !service->library_error().isEmpty();
+        recovery_actions->setVisible(failed);
+        restore->setEnabled(!service->library_path().isEmpty());
         if (no_apps && empty_layout->indexOf(progress) < 0) {
             root->removeWidget(progress);
             empty_layout->insertWidget(empty_layout->count() - 1, progress);
@@ -593,7 +626,10 @@ QWidget *library(const ui_context &context, QWidget *parent) {
             progress->show();
         }
         if (!service->is_ready()) {
-            empty_title->setText(QCoreApplication::translate("XLibrary", "Loading the library…"));
+            empty_title->setText(failed ? QCoreApplication::translate("XLibrary", "Could not open the library")
+                                        : QCoreApplication::translate("XLibrary", "Loading the library…"));
+            hint->setText(failed ? service->library_error() + '\n' + QDir::toNativeSeparators(service->library_path())
+                                 : QString{});
         } else {
             empty_title->setText(no_apps ? QCoreApplication::translate("XLibrary", "Add your first application")
                                          : QCoreApplication::translate("XLibrary", "No results"));

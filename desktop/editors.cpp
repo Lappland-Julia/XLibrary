@@ -112,9 +112,9 @@ QDialog *application_editor(const ui_context &context, QWidget *parent) {
     QObject::connect(buttons, &QDialogButtonBox::accepted, dialog, [=] {
         app_record updated = record;
         updated.name = name->text().trimmed();
-        updated.path = QDir::fromNativeSeparators(path->text().trimmed());
+        updated.path = QDir::fromNativeSeparators(path->text());
         updated.arguments = arguments->text();
-        updated.working_directory = directory->text().trimmed();
+        updated.working_directory = directory->text();
         updated.tags = parse_tags(tags->text());
         updated.favorite = favorite->isChecked();
         if (updated.name.isEmpty() || !QFileInfo(updated.path).isAbsolute()) {

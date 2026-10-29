@@ -22,8 +22,10 @@ class LinuxHotkeyState;
 namespace desktop_platform {
 QString default_global_shortcut();
 QSet<QString> running_paths(const QVector<app_record> &applications);
-bool activate_window(const QString &path);
-void launch_application(const app_record &record);
+enum class launch_mode { launch, activate, new_instance };
+bool activate_window(const app_record &record);
+void launch_application(const app_record &record, launch_mode mode);
+QString new_instance_error(const app_record &record);
 void open_folder(const QString &path);
 bool open_url(const QUrl &url);
 bool installed_for_updates();

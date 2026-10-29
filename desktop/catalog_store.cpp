@@ -1,25 +1,38 @@
 #include <algorithm>
 #include <QDateTime>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QSet>
+#include <QTemporaryDir>
 #include <stdexcept>
 
 #include "catalog_store.h"
 #include "localization.h"
 #include "path_helpers.h"
 
-namespace {
-void validate_application(const app_record &record) {
+void CatalogStore::validate_application(const app_record &record) {
     if (record.name.trimmed().isEmpty() || record.name.size() > 256 || !QFileInfo(record.path).isAbsolute() ||
         record.name.contains(QChar::Null) || record.path.contains(QChar::Null) ||
         record.arguments.contains(QChar::Null) || record.working_directory.contains(QChar::Null)) {
         throw std::invalid_argument(
             QCoreApplication::translate("XLibrary", "Invalid application name or path.").toStdString());
     }
+#ifdef Q_OS_WIN
+    if (QFileInfo(record.path).suffix().isEmpty())
+        throw std::invalid_argument(
+            QCoreApplication::translate("XLibrary", "A Windows target requires a filename extension.").toStdString());
+#endif
     if (!record.working_directory.isEmpty() && !QFileInfo(record.working_directory).isAbsolute()) {
         throw std::invalid_argument(
             QCoreApplication::translate("XLibrary", "The working directory must be an absolute path.").toStdString());
+    }
+    if (record.path.size() > catalog_limits::text_length || record.arguments.size() > catalog_limits::text_length ||
+        record.working_directory.size() > catalog_limits::text_length ||
+        record.tags.size() > catalog_limits::tags_per_application) {
+        throw std::invalid_argument(
+            QCoreApplication::translate("XLibrary", "Paths and arguments: up to 32768 characters; tags: up to 256.")
+                .toStdString());
     }
     for (const auto &tag : record.tags) {
         if (!valid_tag_name(tag))
@@ -29,6 +42,7 @@ void validate_application(const app_record &record) {
     }
 }
 
+namespace {
 class Statement {
     sqlite3 *connection;
     std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> statement{nullptr, &sqlite3_finalize};
@@ -157,6 +171,78 @@ CatalogStore::CatalogStore(const QString &database_path) : database(filesystem_p
         );
     )");
     transaction.commit();
+}
+
+QString CatalogStore::restore_backup(const QString &source, const QString &destination) {
+    const auto fail = [](const QString &message) { throw std::runtime_error(message.toStdString()); };
+    if (!QFileInfo(source).isFile() ||
+        QFileInfo(source).canonicalFilePath() == QFileInfo(destination).canonicalFilePath())
+        fail(QCoreApplication::translate("XLibrary", "Select a different, existing SQLite backup file."));
+    const auto parent = QFileInfo(destination).absolutePath();
+    if (!QDir().mkpath(parent))
+        fail(QCoreApplication::translate("XLibrary", "Could not create the library folder."));
+    QTemporaryDir staging(parent + "/.xlibrary-recovery-XXXXXX");
+    if (!staging.isValid())
+        fail(QCoreApplication::translate("XLibrary", "Could not create a recovery folder."));
+    const auto restored = staging.filePath("restored.db");
+    {
+        sqlite3 *raw_source = nullptr;
+        const auto opened = sqlite3_open_v2(source.toUtf8().constData(), &raw_source, SQLITE_OPEN_READONLY, nullptr);
+        const std::unique_ptr<sqlite3, decltype(&sqlite3_close_v2)> input(raw_source, &sqlite3_close_v2);
+        if (opened != SQLITE_OK)
+            fail(QCoreApplication::translate("XLibrary", "Could not open the SQLite backup."));
+        Statement check(input.get(), "PRAGMA quick_check;");
+        if (!check.next() || check.text(0) != "ok")
+            fail(QCoreApplication::translate("XLibrary", "The SQLite backup is damaged."));
+        Statement schema(input.get(), "SELECT a.id,a.name,a.path,t.id,t.name,at.application_id,at.tag_id "
+                                      "FROM applications a, tags t, application_tags at LIMIT 0;");
+        schema.next();
+        sqlite3 *raw_destination = nullptr;
+        const auto created = sqlite3_open(restored.toUtf8().constData(), &raw_destination);
+        const std::unique_ptr<sqlite3, decltype(&sqlite3_close_v2)> output(raw_destination, &sqlite3_close_v2);
+        if (created != SQLITE_OK)
+            fail(QCoreApplication::translate("XLibrary", "Could not prepare the restored library."));
+        auto *backup = sqlite3_backup_init(output.get(), "main", input.get(), "main");
+        if (!backup)
+            fail(QCoreApplication::translate("XLibrary", "Could not read the SQLite backup."));
+        const auto copied = sqlite3_backup_step(backup, -1);
+        const auto finished = sqlite3_backup_finish(backup);
+        if (copied != SQLITE_DONE || finished != SQLITE_OK)
+            fail(QCoreApplication::translate("XLibrary", "Could not copy the SQLite backup."));
+    }
+    // Проверяем схему и миграцию в отдельном файле, прежде чем трогать исходную БД.
+    {
+        CatalogStore candidate(restored);
+        candidate.read();
+    }
+    QVector<QPair<QString, QString>> moved;
+    for (const auto &suffix : {QString{}, QString("-wal"), QString("-shm"), QString("-journal")}) {
+        const auto original = destination + suffix;
+        if (!QFileInfo::exists(original))
+            continue;
+        const auto saved = staging.filePath("previous.db" + suffix);
+        if (!QFile::rename(original, saved)) {
+            for (auto it = moved.crbegin(); it != moved.crend(); ++it)
+                QFile::rename(it->second, it->first);
+            // При сбое отката сохраняем папку с исходными файлами для ручного восстановления.
+            staging.setAutoRemove(false);
+            fail(QCoreApplication::translate("XLibrary", "Could not preserve the current library. Recovery files: %1")
+                     .arg(staging.path()));
+        }
+        moved.append({original, saved});
+    }
+    if (!QFile::rename(restored, destination)) {
+        for (auto it = moved.crbegin(); it != moved.crend(); ++it)
+            QFile::rename(it->second, it->first);
+        staging.setAutoRemove(false);
+        fail(QCoreApplication::translate("XLibrary", "Could not install the restored library. Recovery files: %1")
+                 .arg(staging.path()));
+    }
+    if (!moved.isEmpty()) {
+        staging.setAutoRemove(false);
+        return staging.path();
+    }
+    return {};
 }
 
 catalog_snapshot CatalogStore::read() const {
@@ -376,6 +462,21 @@ void CatalogStore::clear_history() {
 catalog_import_result CatalogStore::import_records(const QVector<app_record> &records, discovery_control *control,
                                                    const std::function<void(qsizetype, qsizetype)> &progress,
                                                    QVector<discovery_issue> *issues) {
+    QVector<const app_record *> candidates;
+    candidates.reserve(records.size());
+    for (const auto &record : records) {
+        if (control && control->phase.load() == discovery_phase::cancelling)
+            throw DiscoveryCancelled();
+        try {
+            validate_application(record);
+            candidates.append(&record);
+        } catch (const std::invalid_argument &error) {
+            if (!issues)
+                throw;
+            issues->append(discovery_issue{record.discovery_source.isEmpty() ? record.path : record.discovery_source,
+                                           QString::fromUtf8(error.what())});
+        }
+    }
     Transaction transaction(database.get_connection());
     QSet<QString> names;
     QSet<QString> paths;
@@ -385,18 +486,18 @@ catalog_import_result CatalogStore::import_records(const QVector<app_record> &re
         paths.insert(normalized_path(current.text(1)));
     }
     catalog_import_result result;
-    for (qsizetype index = 0; index < records.size(); ++index) {
+    for (qsizetype index = 0; index < candidates.size(); ++index) {
         if (control && control->phase.load() == discovery_phase::cancelling)
             throw DiscoveryCancelled();
         if (progress)
-            progress(index, records.size());
-        const auto &record = records[index];
+            progress(index, candidates.size());
+        const auto &record = *candidates[index];
         const auto path = normalized_path(record.path);
         if (names.contains(record.name) || paths.contains(path)) {
             ++result.duplicates;
             if (issues)
                 issues->append(discovery_issue{
-                    record.path,
+                    record.discovery_source.isEmpty() ? record.path : record.discovery_source,
                     names.contains(record.name)
                         ? QCoreApplication::translate("XLibrary",
                                                       "The library already contains an entry with this name.")
@@ -404,12 +505,11 @@ catalog_import_result CatalogStore::import_records(const QVector<app_record> &re
                                                       "The library already contains an entry with this path."),
                     discovery_issue_kind::duplicate});
         } else {
-            validate_application(record);
             if (!database.add_application(record.name.toStdString(), filesystem_path(record.path))) {
                 ++result.duplicates;
                 if (issues)
                     issues->append(discovery_issue{
-                        record.path,
+                        record.discovery_source.isEmpty() ? record.path : record.discovery_source,
                         QCoreApplication::translate("XLibrary", "The entry already exists in the database."),
                         discovery_issue_kind::duplicate});
                 continue;
@@ -429,6 +529,6 @@ catalog_import_result CatalogStore::import_records(const QVector<app_record> &re
     }
     transaction.commit();
     if (progress)
-        progress(records.size(), records.size());
+        progress(candidates.size(), candidates.size());
     return result;
 }

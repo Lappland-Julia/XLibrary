@@ -8,6 +8,13 @@
 #include <QVector>
 #include <stdexcept>
 
+namespace catalog_limits {
+inline constexpr qint64 json_bytes = 32 * 1024 * 1024;
+inline constexpr qsizetype applications = 50000;
+inline constexpr qsizetype text_length = 32768;
+inline constexpr qsizetype tags_per_application = 256;
+}
+
 inline bool valid_tag_name(const QString &tag) {
     return !tag.isEmpty() && tag.size() <= 64 && !tag.contains(QChar::Null) &&
            !tag.contains(QRegularExpression("[\\s,#]"));
@@ -23,6 +30,8 @@ struct app_record {
     bool favorite = false;
     bool available = true;
     bool running = false;
+    QString new_instance_error;
+    QString discovery_source;
     qint64 last_launch = 0;
 };
 

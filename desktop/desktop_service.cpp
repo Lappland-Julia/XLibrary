@@ -67,10 +67,15 @@ public:
     catalog_snapshot catalog;
     QTimer *monitor = nullptr;
     QSet<QString> last_running;
+    QSet<QString> last_unavailable;
     bool monitor_error = false;
 
     void initialize() {
         try {
+            if (database_path.isEmpty())
+                database_path = path_text(Database::get_database_path());
+            emit location_changed(database_path);
+            store.reset();
             store = std::make_unique<CatalogStore>(database_path);
             refresh();
             monitor = new QTimer(this);
@@ -78,35 +83,72 @@ public:
             connect(monitor, &QTimer::timeout, this, [this] { poll(); });
             monitor->start();
         } catch (const std::exception &error) {
-            emit failed(QCoreApplication::translate("XLibrary", "Could not open the library: %1")
-                            .arg(QString::fromUtf8(error.what())));
+            store.reset();
+            emit initialization_failed(QCoreApplication::translate("XLibrary", "Could not open the library: %1")
+                                           .arg(QString::fromUtf8(error.what())));
+        }
+    }
+    void restore(const QString &path) {
+        try {
+            if (database_path.isEmpty())
+                database_path = path_text(Database::get_database_path());
+            store.reset();
+            const auto preserved = CatalogStore::restore_backup(path, database_path);
+            initialize();
+            if (store)
+                emit notification(preserved.isEmpty()
+                                      ? QCoreApplication::translate("XLibrary", "Library restored.")
+                                      : QCoreApplication::translate("XLibrary", "Library restored. Previous files: %1")
+                                            .arg(preserved));
+        } catch (const std::exception &error) {
+            emit initialization_failed(QString::fromUtf8(error.what()));
         }
     }
     void refresh() {
         catalog = store->read();
-        for (auto &record : catalog.applications)
+        for (auto &record : catalog.applications) {
             record.running = last_running.contains(normalized_path(record.path));
+            record.new_instance_error = desktop_platform::new_instance_error(record);
+        }
         emit loaded(catalog);
         poll();
     }
     void poll() {
-        try {
-            const auto paths = desktop_platform::running_paths(catalog.applications);
-            monitor_error = false;
-            if (paths != last_running) {
-                last_running = paths;
-                emit running_changed(paths);
+        QSet<QString> unavailable;
+        bool capabilities_changed = false;
+        for (auto &record : catalog.applications) {
+            const auto error = desktop_platform::new_instance_error(record);
+            if (error != record.new_instance_error) {
+                record.new_instance_error = error;
+                capabilities_changed = true;
             }
+            record.available = QFileInfo(record.path).isFile();
+            if (!record.available)
+                unavailable.insert(normalized_path(record.path));
+        }
+        auto paths = last_running;
+        try {
+            paths = desktop_platform::running_paths(catalog.applications);
+            monitor_error = false;
         } catch (const std::exception &error) {
             if (!monitor_error)
                 emit failed(QString::fromUtf8(error.what()));
             monitor_error = true;
         }
+        for (auto &record : catalog.applications)
+            record.running = paths.contains(normalized_path(record.path));
+        if (capabilities_changed || paths != last_running || unavailable != last_unavailable) {
+            last_running = paths;
+            last_unavailable = unavailable;
+            emit state_changed(catalog.applications);
+        }
     }
 
 signals:
     void loaded(const catalog_snapshot &catalog);
-    void running_changed(const QSet<QString> &paths);
+    void initialization_failed(const QString &message);
+    void location_changed(const QString &path);
+    void state_changed(const QVector<app_record> &applications);
     void failed(const QString &message);
     void completed(const QString &operation, bool success);
     void resolved(const QString &requested_path, const app_record &record);
@@ -129,6 +171,14 @@ DesktopService::DesktopService(QObject *parent, const QString &profile_path, con
     worker->moveToThread(&worker_thread);
     connect(&worker_thread, &QThread::started, worker, &CatalogWorker::initialize);
     connect(&worker_thread, &QThread::finished, worker, &QObject::deleteLater);
+    connect(worker, &CatalogWorker::location_changed, this, [this](const QString &path) { library_file = path; });
+    connect(worker, &CatalogWorker::initialization_failed, this, [this](const QString &error) {
+        opening = false;
+        ready = false;
+        opening_error = error;
+        emit catalog_changed();
+        emit message(error);
+    });
     connect(worker, &CatalogWorker::failed, this, &DesktopService::message);
     connect(worker, &CatalogWorker::notification, this, &DesktopService::message);
     connect(worker, &CatalogWorker::discovery_report_ready, this, [this](const QString &report) {
@@ -157,14 +207,17 @@ DesktopService::DesktopService(QObject *parent, const QString &profile_path, con
         if (!current_tag.isEmpty() && !snapshot.tags.contains(current_tag))
             navigate(current_section);
         ready = true;
+        opening = false;
+        opening_error.clear();
         model.replace(value.applications);
         if (!model.find(selected_id))
             selected_id = 0;
         emit catalog_changed();
         emit selection_changed();
     });
-    connect(worker, &CatalogWorker::running_changed, this, [this](const QSet<QString> &paths) {
-        model.update_running(paths);
+    connect(worker, &CatalogWorker::state_changed, this, [this](const QVector<app_record> &applications) {
+        snapshot.applications = applications;
+        model.update_state(applications);
         emit selection_changed();
     });
     connect(worker, &CatalogWorker::launched, this, [this](qint64 id, bool success, quint64 from_scenario) {
@@ -204,12 +257,34 @@ DesktopService::~DesktopService() {
     worker_thread.wait();
 }
 
+void DesktopService::retry_library() {
+    if (ready || opening)
+        return;
+    opening = true;
+    opening_error.clear();
+    emit catalog_changed();
+    QMetaObject::invokeMethod(worker, &CatalogWorker::initialize, Qt::QueuedConnection);
+}
+
+void DesktopService::open_profile_folder() {
+    enqueue("folder", [path = settings.fileName()](CatalogWorker &) { desktop_platform::open_folder(path); });
+}
+
+void DesktopService::restore_library(const QString &path) {
+    if (ready || opening || path.isEmpty())
+        return;
+    opening = true;
+    opening_error.clear();
+    emit catalog_changed();
+    QMetaObject::invokeMethod(worker, [worker = worker, path] { worker->restore(path); }, Qt::QueuedConnection);
+}
+
 void DesktopService::enqueue(const QString &operation, std::function<void(CatalogWorker &)> task) {
     QMetaObject::invokeMethod(
         worker,
         [worker = worker, operation, task = std::move(task)] {
             try {
-                if (!worker->store)
+                if (!worker->store && operation != "folder")
                     throw std::runtime_error(
                         QCoreApplication::translate(
                             "XLibrary",
@@ -303,8 +378,11 @@ void DesktopService::launch(qint64 id, bool new_instance, bool scenario) {
     }
     launching.insert(id);
     const auto generation = scenario ? scenario_generation->load() : 0;
-    const bool activate = !new_instance && settings.value("behavior/relaunch", "activate").toString() == "activate";
-    enqueue("launch", [id, activate, generation, token = scenario_generation](CatalogWorker &worker) {
+    const auto mode = new_instance ? desktop_platform::launch_mode::new_instance
+                      : settings.value("behavior/relaunch", "activate").toString() == "activate"
+                          ? desktop_platform::launch_mode::activate
+                          : desktop_platform::launch_mode::launch;
+    enqueue("launch", [id, mode, generation, token = scenario_generation](CatalogWorker &worker) {
         try {
             if (generation && token->load() != generation) {
                 emit worker.launched(id, false, generation);
@@ -316,9 +394,7 @@ void DesktopService::launch(qint64 id, bool new_instance, bool scenario) {
                 throw std::runtime_error(
                     QCoreApplication::translate("XLibrary", "The application was not found in the library.")
                         .toStdString());
-            if (!activate || !desktop_platform::activate_window(it->path)) {
-                desktop_platform::launch_application(*it);
-            }
+            desktop_platform::launch_application(*it, mode);
             // A history error must not turn a successful launch into a failed or repeated launch.
             emit worker.launched(id, true, generation);
             try {
@@ -509,21 +585,52 @@ void DesktopService::cancel_discovery() {
 
 void DesktopService::export_catalog(const QString &path) {
     enqueue("export", [path](CatalogWorker &worker) {
-        QJsonArray applications;
-        for (const auto &record : worker.catalog.applications) {
-            applications.append(QJsonObject{{"name", record.name},
-                                            {"path", record.path},
-                                            {"arguments", record.arguments},
-                                            {"working_directory", record.working_directory},
-                                            {"favorite", record.favorite},
-                                            {"tags", QJsonArray::fromStringList(record.tags)}});
-        }
+        const auto too_large = [] {
+            return std::runtime_error(
+                QCoreApplication::translate(
+                    "XLibrary", "The JSON catalog exceeds 32 MiB or 50000 applications. Export was not saved. "
+                                "Use a database backup for a larger library.")
+                    .toStdString());
+        };
+        if (worker.catalog.applications.size() > catalog_limits::applications)
+            throw too_large();
         QSaveFile file(path);
         if (!file.open(QIODevice::WriteOnly))
             throw std::runtime_error(
                 QCoreApplication::translate("XLibrary", "Could not open the export file.").toStdString());
-        const auto contents = QJsonDocument(QJsonObject{{"format", 1}, {"applications", applications}}).toJson();
-        if (file.write(contents) != contents.size() || !file.commit())
+        qint64 written = 0;
+        const auto write = [&](const QByteArray &contents) {
+            if (contents.size() > catalog_limits::json_bytes - written)
+                throw too_large();
+            if (file.write(contents) != contents.size())
+                throw std::runtime_error(
+                    QCoreApplication::translate("XLibrary", "Could not save the export.").toStdString());
+            written += contents.size();
+        };
+        write("{\"format\":1,\"applications\":[");
+        bool first = true;
+        for (const auto &record : worker.catalog.applications) {
+            try {
+                CatalogStore::validate_application(record);
+            } catch (const std::invalid_argument &error) {
+                throw std::runtime_error(QCoreApplication::translate("XLibrary", "Cannot export %1: %2")
+                                             .arg(record.path, QString::fromUtf8(error.what()))
+                                             .toStdString());
+            }
+            const auto contents = QJsonDocument(QJsonObject{{"name", record.name},
+                                                            {"path", record.path},
+                                                            {"arguments", record.arguments},
+                                                            {"working_directory", record.working_directory},
+                                                            {"favorite", record.favorite},
+                                                            {"tags", QJsonArray::fromStringList(record.tags)}})
+                                      .toJson(QJsonDocument::Compact);
+            if (!first)
+                write(",");
+            first = false;
+            write(contents);
+        }
+        write("]}\n");
+        if (!file.commit())
             throw std::runtime_error(
                 QCoreApplication::translate("XLibrary", "Could not save the export.").toStdString());
         emit worker.notification(QCoreApplication::translate("XLibrary", "Library exported."));
@@ -533,12 +640,18 @@ void DesktopService::export_catalog(const QString &path) {
 void DesktopService::import_catalog(const QString &path) {
     enqueue("import", [path](CatalogWorker &worker) {
         QFile file(path);
-        if (!file.open(QIODevice::ReadOnly) || file.size() > 5 * 1024 * 1024)
+        if (!file.open(QIODevice::ReadOnly))
             throw std::runtime_error(
-                QCoreApplication::translate("XLibrary", "Cannot read the file, or its size exceeds 5 MiB.")
+                QCoreApplication::translate("XLibrary", "Could not read the import file.").toStdString());
+        const auto contents = file.read(catalog_limits::json_bytes + 1);
+        if (contents.size() > catalog_limits::json_bytes)
+            throw std::runtime_error(
+                QCoreApplication::translate("XLibrary", "The JSON catalog exceeds 32 MiB. Import cancelled.")
                     .toStdString());
+        if (file.error() != QFileDevice::NoError)
+            throw std::runtime_error(file.errorString().toStdString());
         QJsonParseError error;
-        const auto document = QJsonDocument::fromJson(file.readAll(), &error);
+        const auto document = QJsonDocument::fromJson(contents, &error);
         if (error.error != QJsonParseError::NoError)
             throw std::runtime_error(
                 QCoreApplication::translate("XLibrary", "JSON error at offset %1: %2. Import cancelled.")
@@ -558,8 +671,13 @@ void DesktopService::import_catalog(const QString &path) {
             throw std::runtime_error(
                 QCoreApplication::translate("XLibrary", "Field applications: expected an array. Import cancelled.")
                     .toStdString());
+        const auto applications = root.value("applications").toArray();
+        if (applications.size() > catalog_limits::applications)
+            throw std::runtime_error(QCoreApplication::translate(
+                                         "XLibrary", "The JSON catalog exceeds 50000 applications. Import cancelled.")
+                                         .toStdString());
         QVector<app_record> records;
-        for (const auto &value : root.value("applications").toArray()) {
+        for (const auto &value : applications) {
             const auto fail = [&](const QString &field, const QString &reason) {
                 throw std::runtime_error(
                     QCoreApplication::translate("XLibrary",
@@ -590,8 +708,11 @@ void DesktopService::import_catalog(const QString &path) {
             record.favorite = object.value("favorite").toBool();
             if (object.contains("tags") && !object.value("tags").isArray())
                 fail("tags", QCoreApplication::translate("XLibrary", "expected an array of strings"));
+            const auto tags = object.value("tags").toArray();
+            if (tags.size() > catalog_limits::tags_per_application)
+                fail("tags", QCoreApplication::translate("XLibrary", "at most 256 tags are allowed"));
             qsizetype tag_index = 0;
-            for (const auto &tag : object.value("tags").toArray()) {
+            for (const auto &tag : tags) {
                 const auto field = QString("tags[%1]").arg(++tag_index);
                 if (!tag.isString())
                     fail(field, QCoreApplication::translate("XLibrary", "expected a string"));
@@ -615,6 +736,11 @@ void DesktopService::import_catalog(const QString &path) {
             if (!record.working_directory.isEmpty() && !QFileInfo(record.working_directory).isAbsolute())
                 fail("working_directory",
                      QCoreApplication::translate("XLibrary", "expected an empty string or an absolute path"));
+            try {
+                CatalogStore::validate_application(record);
+            } catch (const std::invalid_argument &error) {
+                fail("application", QString::fromUtf8(error.what()));
+            }
             records.append(std::move(record));
         }
         const auto count = worker.store->import_records(records);

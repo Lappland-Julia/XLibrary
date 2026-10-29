@@ -15,6 +15,8 @@ private:
 
 public:
     explicit CatalogStore(const QString &database_path = {});
+    static void validate_application(const app_record &record);
+    static QString restore_backup(const QString &source, const QString &destination);
     catalog_snapshot read() const;
     qint64 save_application(const app_record &record);
     void remove_application(qint64 id);

@@ -32,7 +32,7 @@ public:
     QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
     void replace(QVector<app_record> applications);
-    void update_running(const QSet<QString> &paths);
+    void update_state(const QVector<app_record> &applications);
     const app_record *find(qint64 id) const;
     const app_record &at(int row) const { return records[row]; }
     const QString &search_name(int row) const { return search_names[row]; }
