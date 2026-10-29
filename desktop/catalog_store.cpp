@@ -376,6 +376,20 @@ void CatalogStore::clear_history() {
 catalog_import_result CatalogStore::import_records(const QVector<app_record> &records, discovery_control *control,
                                                    const std::function<void(qsizetype, qsizetype)> &progress,
                                                    QVector<discovery_issue> *issues) {
+    QVector<const app_record *> candidates;
+    candidates.reserve(records.size());
+    for (const auto &record : records) {
+        if (control && control->phase.load() == discovery_phase::cancelling)
+            throw DiscoveryCancelled();
+        try {
+            validate_application(record);
+            candidates.append(&record);
+        } catch (const std::invalid_argument &error) {
+            if (!issues)
+                throw;
+            issues->append(discovery_issue{record.path, QString::fromUtf8(error.what())});
+        }
+    }
     Transaction transaction(database.get_connection());
     QSet<QString> names;
     QSet<QString> paths;
@@ -385,12 +399,12 @@ catalog_import_result CatalogStore::import_records(const QVector<app_record> &re
         paths.insert(normalized_path(current.text(1)));
     }
     catalog_import_result result;
-    for (qsizetype index = 0; index < records.size(); ++index) {
+    for (qsizetype index = 0; index < candidates.size(); ++index) {
         if (control && control->phase.load() == discovery_phase::cancelling)
             throw DiscoveryCancelled();
         if (progress)
-            progress(index, records.size());
-        const auto &record = records[index];
+            progress(index, candidates.size());
+        const auto &record = *candidates[index];
         const auto path = normalized_path(record.path);
         if (names.contains(record.name) || paths.contains(path)) {
             ++result.duplicates;
@@ -404,7 +418,6 @@ catalog_import_result CatalogStore::import_records(const QVector<app_record> &re
                                                       "The library already contains an entry with this path."),
                     discovery_issue_kind::duplicate});
         } else {
-            validate_application(record);
             if (!database.add_application(record.name.toStdString(), filesystem_path(record.path))) {
                 ++result.duplicates;
                 if (issues)
@@ -429,6 +442,6 @@ catalog_import_result CatalogStore::import_records(const QVector<app_record> &re
     }
     transaction.commit();
     if (progress)
-        progress(records.size(), records.size());
+        progress(candidates.size(), candidates.size());
     return result;
 }
