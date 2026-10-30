@@ -18,6 +18,8 @@ private:
     void start_job(QKeychain::Job *job, operation action);
 
 public:
+    static bool pending_changes(const QSettings &settings);
+    static void lock_profile(QSettings &settings, bool locked);
     explicit GithubTokenStore(QSettings &settings, QObject *parent = nullptr);
     bool has_token() const;
     bool is_busy() const { return busy; }

@@ -31,6 +31,7 @@ public:
     bool add_application(const Application &application) const;
     bool add_application(const std::string &file_title, const std::filesystem::path &file_path) const;
 
+    // Совместимый поиск по имени; идентичность при записи определяется конфигурацией запуска.
     bool already_exists(const std::string &file_title) const;
     bool already_exists(const std::filesystem::path &file_path) const;
 

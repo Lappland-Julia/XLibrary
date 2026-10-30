@@ -37,7 +37,7 @@ jobs:
       - name: Install build and desktop dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ninja-build clang ccache pkg-config libx11-dev libsecret-1-dev libgl1-mesa-dev libegl1 \
+          sudo apt-get install -y --no-install-recommends ninja-build clang clang-tidy ccache pkg-config libx11-dev libsecret-1-dev libgl1-mesa-dev libegl1 \
             libxkbcommon-x11-0 libxcb-cursor0 xvfb xauth dbus-x11 desktop-file-utils
 
       - name: Install Qt
@@ -60,7 +60,10 @@ jobs:
           BUILD_PRESET: ${{ matrix.preset }}
         run: |
           ccache --max-size=200M
-          cmake --preset "$BUILD_PRESET" -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          tidy_enabled=OFF
+          if [ "$BUILD_PRESET" = linux-clang-debug ]; then tidy_enabled=ON; fi
+          cmake --preset "$BUILD_PRESET" -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DXLIBRARY_ENABLE_CLANG_TIDY="$tidy_enabled"
 
       - name: Build
         env:

@@ -1,6 +1,8 @@
 #ifndef XLIBRARY_WINDOWMANAGER_H
 #define XLIBRARY_WINDOWMANAGER_H
 
+// Устаревший совместимый API оценки темы по яркости экрана. GUI применяет тему
+// через desktop/appearance и desktop_platform, не используя этот класс.
 class WindowManager {
 private:
     bool dark_theme = true;

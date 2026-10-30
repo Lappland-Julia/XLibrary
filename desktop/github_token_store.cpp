@@ -21,12 +21,21 @@ bool GithubTokenStore::has_token() const {
 }
 
 void GithubTokenStore::start_job(QKeychain::Job *job, operation action) {
+    if (action != operation::read && settings.property("profile_locked").toBool()) {
+        job->deleteLater();
+        emit failed(QCoreApplication::translate("XLibrary", "The profile is being restored or requires a restart."));
+        return;
+    }
+    if (action != operation::read)
+        settings.setProperty("secret_writes", settings.property("secret_writes").toInt() + 1);
     job->setKey(key);
     job->setInsecureFallback(false);
     busy = true;
     emit busy_changed();
     connect(job, &QKeychain::Job::finished, this, [this, action](QKeychain::Job *finished) {
         busy = false;
+        if (action != operation::read)
+            settings.setProperty("secret_writes", settings.property("secret_writes").toInt() - 1);
         const bool missing = finished->error() == QKeychain::EntryNotFound;
         if (missing && action == operation::read) {
             emit busy_changed();
@@ -84,4 +93,13 @@ void GithubTokenStore::save(const QString &token) {
 void GithubTokenStore::remove() {
     if (!busy)
         start_job(new QKeychain::DeletePasswordJob("XLibrary", this), operation::remove);
+}
+
+bool GithubTokenStore::pending_changes(const QSettings &settings) {
+    return settings.property("secret_writes").toInt() > 0;
+}
+
+void GithubTokenStore::lock_profile(QSettings &settings, bool locked) {
+    // Общее состояние всех объектов токена профиля не попадает в INI.
+    settings.setProperty("profile_locked", locked);
 }

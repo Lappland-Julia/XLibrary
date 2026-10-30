@@ -94,11 +94,13 @@ QDialog *application_editor(const ui_context &context, QWidget *parent) {
             path->setText(file);
             error->clear();
             browse->setEnabled(false);
-            service->resolve_application(file);
+            dialog->setProperty("resolve_request_id", QVariant::fromValue(service->resolve_application(file)));
         }
     });
     QObject::connect(service, &DesktopService::application_resolved, dialog,
-                     [=](const QString &requested_path, const app_record &resolved) {
+                     [=](quint64 request_id, const QString &requested_path, const app_record &resolved) {
+                         if (request_id != dialog->property("resolve_request_id").toULongLong())
+                             return;
                          if (QDir::cleanPath(path->text()) != QDir::cleanPath(requested_path))
                              return;
                          path->setText(resolved.path);
@@ -107,7 +109,6 @@ QDialog *application_editor(const ui_context &context, QWidget *parent) {
                          name->setProperty("resolved_name", resolved.name);
                          arguments->setText(resolved.arguments);
                          directory->setText(resolved.working_directory);
-                         browse->setEnabled(true);
                      });
     QObject::connect(buttons, &QDialogButtonBox::accepted, dialog, [=] {
         app_record updated = record;
@@ -134,7 +135,8 @@ QDialog *application_editor(const ui_context &context, QWidget *parent) {
             }
 #ifdef Q_OS_WIN
         if (QFileInfo(updated.path).suffix().compare("lnk", Qt::CaseInsensitive) == 0) {
-            service->resolve_application(updated.path);
+            browse->setEnabled(false);
+            dialog->setProperty("resolve_request_id", QVariant::fromValue(service->resolve_application(updated.path)));
             error->setText(
                 QCoreApplication::translate("XLibrary", "Shortcut loaded. Check its parameters and save again."));
             return;
@@ -142,22 +144,24 @@ QDialog *application_editor(const ui_context &context, QWidget *parent) {
 #endif
         error->clear();
         save->setEnabled(false);
-        service->save_application(std::move(updated));
+        dialog->setProperty("save_request_id", QVariant::fromValue(service->save_application(std::move(updated))));
     });
-    QObject::connect(service, &DesktopService::message, dialog, [=](const QString &text) {
-        if (!save->isEnabled() || !browse->isEnabled())
-            error->setText(text);
-    });
-    QObject::connect(service, &DesktopService::operation_finished, dialog, [=](const QString &operation, bool success) {
-        if (operation == "resolve")
+    QObject::connect(service, &DesktopService::operation_changed, dialog, [=](const operation_result &result) {
+        if (result.state == operation_state::loading)
+            return;
+        if (result.id == dialog->property("resolve_request_id").toULongLong()) {
+            dialog->setProperty("resolve_request_id", {});
             browse->setEnabled(true);
-        if (operation == "application" && !save->isEnabled()) {
-            if (success)
+            if (result.state == operation_state::error)
+                error->setText(result.error.user_message);
+        }
+        if (result.id == dialog->property("save_request_id").toULongLong()) {
+            dialog->setProperty("save_request_id", {});
+            if (result.state == operation_state::completed)
                 dialog->accept();
             else {
                 save->setEnabled(true);
-                if (error->text().isEmpty())
-                    error->setText(QCoreApplication::translate("XLibrary", "Could not save the application."));
+                error->setText(result.error.user_message);
             }
         }
     });
@@ -200,20 +204,17 @@ QDialog *tag_editor(const ui_context &context, QWidget *parent) {
         }
         error->clear();
         buttons->button(QDialogButtonBox::Save)->setEnabled(false);
-        service->save_tag(old_name, tag);
+        dialog->setProperty("save_request_id", QVariant::fromValue(service->save_tag(old_name, tag)));
     });
-    QObject::connect(service, &DesktopService::message, dialog, [=](const QString &text) {
-        if (!buttons->button(QDialogButtonBox::Save)->isEnabled())
-            error->setText(text);
-    });
-    QObject::connect(service, &DesktopService::operation_finished, dialog, [=](const QString &operation, bool success) {
-        if (operation == "tag") {
-            if (success)
+    QObject::connect(service, &DesktopService::operation_changed, dialog, [=](const operation_result &result) {
+        if (result.id == dialog->property("save_request_id").toULongLong() &&
+            result.state != operation_state::loading) {
+            dialog->setProperty("save_request_id", {});
+            if (result.state == operation_state::completed)
                 dialog->accept();
             else {
                 buttons->button(QDialogButtonBox::Save)->setEnabled(true);
-                if (error->text().isEmpty())
-                    error->setText(QCoreApplication::translate("XLibrary", "Could not save the tag."));
+                error->setText(result.error.user_message);
             }
         }
     });
@@ -344,27 +345,25 @@ QDialog *scenario_editor(const ui_context &context, QWidget *parent) {
         error->clear();
         buttons->button(QDialogButtonBox::Save)->setEnabled(false);
         save_and_run->setEnabled(false);
-        service->save_scenario(std::move(updated));
+        dialog->setProperty("save_request_id", QVariant::fromValue(service->save_scenario(std::move(updated))));
     };
     QObject::connect(buttons, &QDialogButtonBox::accepted, dialog, [=] { save_scenario(false); });
     QObject::connect(save_and_run, &QPushButton::clicked, dialog, [=] { save_scenario(true); });
-    QObject::connect(service, &DesktopService::message, dialog, [=](const QString &text) {
-        if (!save_and_run->isEnabled())
-            error->setText(text);
-    });
-    QObject::connect(service, &DesktopService::scenario_saved, dialog, [=](qint64 id) {
-        if (!save_and_run->isEnabled() && dialog->property("run_after_save").toBool())
+    QObject::connect(service, &DesktopService::scenario_saved, dialog, [=](quint64 request_id, qint64 id) {
+        if (request_id == dialog->property("save_request_id").toULongLong() &&
+            dialog->property("run_after_save").toBool())
             service->run_scenario(id);
     });
-    QObject::connect(service, &DesktopService::operation_finished, dialog, [=](const QString &operation, bool success) {
-        if (operation == "scenario") {
-            if (success)
+    QObject::connect(service, &DesktopService::operation_changed, dialog, [=](const operation_result &result) {
+        if (result.id == dialog->property("save_request_id").toULongLong() &&
+            result.state != operation_state::loading) {
+            dialog->setProperty("save_request_id", {});
+            if (result.state == operation_state::completed)
                 dialog->accept();
             else {
                 buttons->button(QDialogButtonBox::Save)->setEnabled(true);
                 save_and_run->setEnabled(true);
-                if (error->text().isEmpty())
-                    error->setText(QCoreApplication::translate("XLibrary", "Could not save the scenario."));
+                error->setText(result.error.user_message);
             }
         }
     });

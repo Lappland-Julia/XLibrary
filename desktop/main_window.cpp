@@ -70,13 +70,14 @@ QWidget *shell(const ui_context &context, QWidget *parent) {
             QCoreApplication::translate("XLibrary", "Current version: %1").arg(QCoreApplication::applicationVersion()));
     });
     QObject::connect(&service->updates, &UpdateChecker::failed, update_notice,
-                     [=](const QString &message) { update_notice->show_message(message); });
+                     [=](const QString &) { update_notice->hide(); });
     QObject::connect(&service->updates, &UpdateChecker::check_cancelled, update_notice, [=] {
         update_notice->show_message(QCoreApplication::translate("XLibrary", "Update cancelled."));
     });
     update_notice->activated = [=] { context.actions.value("update_settings")->trigger(); };
-    auto *splitter = new LibrarySplitter(*context.settings, navigation, center,
-                                         context.registry->create("details", context, widget), widget);
+    auto *splitter =
+        new LibrarySplitter(*context.settings, navigation, center, context.registry->create("details", context, widget),
+                            widget, [service] { return !service->profile_busy() && !service->restart_required(); });
     root->addWidget(splitter);
     QObject::connect(service, &DesktopService::navigation_changed, widget,
                      [=, section = service->section(), tag = service->tag()]() mutable {
@@ -130,6 +131,7 @@ MainWindow::MainWindow(DesktopService &service) : service(service), hotkey(this)
     connect(&hotkey, &GlobalHotkey::activated, this, &MainWindow::show_library);
     connect(&service, &DesktopService::selection_changed, this, &MainWindow::refresh_actions);
     connect(&service, &DesktopService::catalog_changed, this, &MainWindow::refresh_actions);
+    connect(&service, &DesktopService::profile_state_changed, this, &MainWindow::refresh_actions);
     connect(&service, &DesktopService::discovery_changed, this, &MainWindow::refresh_actions);
     connect(&service, &DesktopService::discovery_progress_changed, this, &MainWindow::refresh_actions);
     connect(&service, &DesktopService::navigation_changed, this, &MainWindow::update_layout);
@@ -264,11 +266,13 @@ void MainWindow::create_actions() {
 
 void MainWindow::refresh_actions() {
     const auto *record = service.selected();
+    const bool profile_available = !service.profile_busy() && !service.restart_required();
     for (const auto &id : {"launch", "new_instance", "edit_application", "remove_application", "favorite",
                            "open_folder", "copy_path", "details"})
-        context.actions.value(id)->setEnabled(record != nullptr && service.section() != "scenarios");
+        context.actions.value(id)->setEnabled(profile_available && record != nullptr &&
+                                              service.section() != "scenarios");
     auto *new_instance = context.actions.value("new_instance");
-    const bool can_start = record && record->available && record->new_instance_error.isEmpty();
+    const bool can_start = profile_available && record && record->available && record->new_instance_error.isEmpty();
     new_instance->setEnabled(can_start && service.section() != "scenarios");
     new_instance->setText(QCoreApplication::translate("XLibrary", "Request new instance"));
     new_instance->setToolTip(
@@ -276,11 +280,13 @@ void MainWindow::refresh_actions() {
             ? record->new_instance_error
             : QCoreApplication::translate(
                   "XLibrary", "Runs the launch command directly. The application may reuse an existing window."));
-    context.actions.value("add_application")->setEnabled(service.is_ready());
-    context.actions.value("add_tag")->setEnabled(service.is_ready());
-    context.actions.value("add_scenario")->setEnabled(service.is_ready() && service.model.rowCount() > 0);
+    context.actions.value("add_application")->setEnabled(profile_available && service.is_ready());
+    context.actions.value("add_tag")->setEnabled(profile_available && service.is_ready());
+    context.actions.value("add_scenario")
+        ->setEnabled(profile_available && service.is_ready() && service.model.rowCount() > 0);
     context.actions.value("discover")
-        ->setEnabled(service.is_ready() && (!service.is_discovering() || service.can_cancel_discovery()));
+        ->setEnabled(profile_available && service.is_ready() &&
+                     (!service.is_discovering() || service.can_cancel_discovery()));
     context.actions.value("discover")
         ->setText(service.is_discovering() ? QCoreApplication::translate("XLibrary", "Cancel discovery")
                                            : QCoreApplication::translate("XLibrary", "Find installed applications"));
@@ -320,6 +326,10 @@ void MainWindow::apply_settings() {
 }
 
 void MainWindow::load_plugins() {
+    if (service.safe_mode()) {
+        context.parameters.insert("available_plugins", QStringList{});
+        return;
+    }
     const QDir directory(QApplication::applicationDirPath() + "/plugins");
     QStringList available;
     const auto enabled = service.settings.value("plugins/enabled").toStringList();
@@ -370,9 +380,14 @@ void MainWindow::show_library() {
 }
 
 void MainWindow::start() {
+    if (service.safe_mode() && !QCoreApplication::arguments().contains("--check-startup"))
+        QTimer::singleShot(0, &service, [this] {
+            service.notify(
+                QCoreApplication::translate("XLibrary", "Safe mode: user plugins are disabled for this session."));
+        });
     const bool background = QCoreApplication::arguments().contains("--background") ||
                             service.settings.value("behavior/startup", "show").toString() == "tray";
-    if (!background || !tray.isVisible())
+    if (service.safe_mode() || !background || !tray.isVisible())
         show_library();
     if (!QCoreApplication::arguments().contains("--check-startup")) {
         QTimer::singleShot(0, this, [this] {
@@ -389,8 +404,10 @@ void MainWindow::start() {
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
-    service.settings.setValue("window/geometry", saveGeometry());
-    service.settings.sync();
+    if (!service.profile_busy() && !service.restart_required()) {
+        service.settings.setValue("window/geometry", saveGeometry());
+        service.settings.sync();
+    }
     if (!quitting && service.settings.value("behavior/close_to_tray", true).toBool() && tray.isVisible()) {
         hide();
         event->ignore();

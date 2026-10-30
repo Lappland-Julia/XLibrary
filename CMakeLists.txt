@@ -1,12 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION")
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" XLIBRARY_RELEASE_VERSION)
-string(STRIP "${XLIBRARY_RELEASE_VERSION}" XLIBRARY_RELEASE_VERSION)
-if(NOT XLIBRARY_RELEASE_VERSION MATCHES "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$")
-    message(FATAL_ERROR "VERSION must contain a version in major.minor.patch format.")
-endif()
-project(XLibrary VERSION "${XLIBRARY_RELEASE_VERSION}" LANGUAGES C CXX)
+include(cmake/version.cmake)
+project(XLibrary VERSION "${XLIBRARY_NUMERIC_VERSION}" LANGUAGES C CXX)
 
 # Use extraction timestamps for files from downloaded archives.
 if(POLICY CMP0135)
@@ -19,6 +14,11 @@ if(POLICY CMP0138)
 endif()
 
 if(WIN32)
+    foreach(xlibrary_component IN ITEMS XLIBRARY_VERSION_MAJOR XLIBRARY_VERSION_MINOR XLIBRARY_VERSION_PATCH)
+        if(${xlibrary_component} GREATER 65535)
+            message(FATAL_ERROR "Windows version components must be in the range 0..65535.")
+        endif()
+    endforeach()
     enable_language(RC)
 elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
     message(FATAL_ERROR "XLibrary supports Windows and Linux.")
@@ -49,6 +49,8 @@ option(XLIBRARY_NATIVE_CPU
         "Optimize Release builds for the build computer CPU (not portable)"
         OFF
 )
+
+option(XLIBRARY_ENABLE_CLANG_TIDY "Analyze the project's C++ sources with clang-tidy" OFF)
 
 # ------------------------------------------------------------
 # Dependencies
@@ -97,6 +99,11 @@ target_link_libraries(sqlite3 PUBLIC
 # ------------------------------------------------------------
 
 add_library(xlibrary_core STATIC
+
+        src/profile_schema.h src/profile_schema.cpp
+        src/launch_identity.h src/launch_identity.cpp
+        src/launch_arguments.h src/launch_arguments.cpp
+        src/sqlite_helpers.h
 
         src/Application.cpp
         src/Application.h
@@ -147,6 +154,10 @@ qt_add_executable(XLibrary WIN32
         main.cpp
         desktop/catalog_types.h
         desktop/catalog_store.h desktop/catalog_store.cpp
+        desktop/profile_backup.h desktop/profile_backup.cpp
+        desktop/profile_settings.h desktop/profile_settings.cpp
+        desktop/profile_view.h desktop/profile_view.cpp
+        desktop/operation_types.h
         desktop/platform_integration.h
         desktop/path_helpers.h
         desktop/application_paths.h
@@ -195,7 +206,7 @@ qt_add_resources(XLibrary application_images
         PREFIX "/"
         FILES assets/xlibrary.ico
 )
-target_compile_definitions(XLibrary PRIVATE XLIBRARY_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(XLibrary PRIVATE XLIBRARY_VERSION="${XLIBRARY_RELEASE_VERSION}")
 
 target_link_libraries(XLibrary PRIVATE xlibrary_core Qt6::Widgets Qt6::Concurrent Qt6::Network qt6keychain)
 
@@ -212,10 +223,43 @@ if(WIN32)
     configure_file(packaging/build_config.json.in packaging-config.json @ONLY)
 endif()
 
-if(MSVC)
-    target_compile_options(XLibrary PRIVATE /utf-8 /W4)
-else()
-    target_compile_options(XLibrary PRIVATE -Wall -Wextra -Wpedantic)
+foreach(xlibrary_target IN ITEMS XLibrary xlibrary_core)
+    if(MSVC)
+        target_compile_options(${xlibrary_target} PRIVATE /utf-8 /W4)
+    else()
+        target_compile_options(${xlibrary_target} PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+endforeach()
+
+if(XLIBRARY_ENABLE_CLANG_TIDY)
+    if(CMAKE_VERSION VERSION_LESS 3.27)
+        message(FATAL_ERROR "XLIBRARY_ENABLE_CLANG_TIDY requires CMake 3.27+ to exclude generated sources.")
+    endif()
+    if(NOT CMAKE_GENERATOR MATCHES "Ninja|Makefiles")
+        message(FATAL_ERROR "XLIBRARY_ENABLE_CLANG_TIDY requires a Ninja or Makefiles generator.")
+    endif()
+    find_program(XLIBRARY_CLANG_TIDY NAMES clang-tidy REQUIRED)
+    set(xlibrary_tidy_command "${XLIBRARY_CLANG_TIDY}")
+    if(MSVC)
+        list(APPEND xlibrary_tidy_command "--extra-arg-before=--driver-mode=cl")
+    endif()
+    # Анализируем только собственные цели; Qt помечает RCC-файлы свойством SKIP_LINTING.
+    foreach(xlibrary_target IN ITEMS XLibrary xlibrary_core)
+        set_property(TARGET ${xlibrary_target} PROPERTY CXX_CLANG_TIDY "${xlibrary_tidy_command}")
+        get_target_property(xlibrary_sources ${xlibrary_target} SOURCES)
+        foreach(xlibrary_source IN LISTS xlibrary_sources)
+            if(IS_ABSOLUTE "${xlibrary_source}")
+                set_property(SOURCE "${xlibrary_source}" PROPERTY SKIP_LINTING ON)
+            endif()
+        endforeach()
+    endforeach()
+    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/XLibrary_autogen/mocs_compilation.cpp"
+            PROPERTIES SKIP_LINTING ON)
+    foreach(xlibrary_configuration IN LISTS CMAKE_CONFIGURATION_TYPES)
+        set_source_files_properties(
+                "${CMAKE_CURRENT_BINARY_DIR}/XLibrary_autogen/mocs_compilation_${xlibrary_configuration}.cpp"
+                PROPERTIES SKIP_LINTING ON)
+    endforeach()
 endif()
 
 install(TARGETS XLibrary RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

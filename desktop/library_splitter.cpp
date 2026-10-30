@@ -5,8 +5,8 @@
 #include "localization.h"
 
 LibrarySplitter::LibrarySplitter(QSettings &settings, QWidget *navigation, QWidget *center, QWidget *details,
-                                 QWidget *parent)
-    : QSplitter(Qt::Horizontal, parent), settings(settings) {
+                                 QWidget *parent, std::function<bool()> can_save_layout)
+    : QSplitter(Qt::Horizontal, parent), settings(settings), can_save_layout(std::move(can_save_layout)) {
     setObjectName("library_splitter");
     setChildrenCollapsible(false);
     setHandleWidth(6);
@@ -21,7 +21,7 @@ LibrarySplitter::LibrarySplitter(QSettings &settings, QWidget *navigation, QWidg
     handle(2)->setToolTip(QCoreApplication::translate("XLibrary", "Drag to resize the details pane"));
     handle(2)->setAccessibleName(QCoreApplication::translate("XLibrary", "Details width"));
     connect(this, &QSplitter::splitterMoved, this, [this] {
-        if (applying_layout)
+        if (applying_layout || (this->can_save_layout && !this->can_save_layout()))
             return;
         const auto scale = appearance::scaled(this->settings, 100) / 100.0;
         this->settings.setValue("window/navigation_width", qRound(widget(0)->width() / scale));

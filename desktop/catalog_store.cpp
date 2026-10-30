@@ -8,8 +8,10 @@
 #include <stdexcept>
 
 #include "catalog_store.h"
+#include "launch_identity.h"
 #include "localization.h"
 #include "path_helpers.h"
+#include "profile_schema.h"
 
 void CatalogStore::validate_application(const app_record &record) {
     if (record.name.trimmed().isEmpty() || record.name.size() > 256 || !QFileInfo(record.path).isAbsolute() ||
@@ -115,62 +117,15 @@ void CatalogStore::execute(const char *sql) const {
 }
 
 CatalogStore::CatalogStore(const QString &database_path) : database(filesystem_path(database_path), false) {
-    auto *connection = database.get_connection();
-    sqlite3_busy_timeout(connection, 1500);
-    bool has_desktop = false;
-    {
-        Statement schema(connection, "SELECT 1 FROM sqlite_master WHERE name = 'desktop_application';");
-        has_desktop = schema.next();
-    }
-    if (!has_desktop) {
-        // SQLite backup accounts for the journal without modifying the source tables.
-        auto backup_path = database.get_file_path();
-        backup_path += ".before-desktop.bak";
-        if (std::filesystem::exists(backup_path)) {
-            backup_path += "." + std::to_string(QDateTime::currentMSecsSinceEpoch());
-        }
-        auto temporary_path = backup_path;
-        temporary_path += ".partial";
-        {
-            sqlite3 *raw = nullptr;
-            const auto utf8 = std::filesystem::path(temporary_path).u8string();
-            const auto result = sqlite3_open(reinterpret_cast<const char *>(utf8.c_str()), &raw);
-            const std::unique_ptr<sqlite3, decltype(&sqlite3_close_v2)> destination(raw, &sqlite3_close_v2);
-            if (result != SQLITE_OK) {
-                throw std::runtime_error("Cannot create database backup");
-            }
-            auto *backup = sqlite3_backup_init(destination.get(), "main", connection, "main");
-            if (!backup) {
-                throw std::runtime_error("Cannot initialize database backup");
-            }
-            const auto copied = sqlite3_backup_step(backup, -1);
-            const auto finished = sqlite3_backup_finish(backup);
-            if (copied != SQLITE_DONE || finished != SQLITE_OK) {
-                throw std::runtime_error("Cannot finish database backup");
-            }
-        }
-        std::filesystem::rename(temporary_path, backup_path);
-    }
-    Transaction transaction(connection);
-    execute(R"(
-        CREATE INDEX IF NOT EXISTS desktop_applications_name ON applications(name);
-        CREATE INDEX IF NOT EXISTS desktop_applications_path ON applications(path);
-        CREATE TABLE IF NOT EXISTS desktop_application (
-            application_id INTEGER PRIMARY KEY REFERENCES applications(id) ON DELETE CASCADE,
-            arguments TEXT NOT NULL DEFAULT '', working_directory TEXT NOT NULL DEFAULT '',
-            favorite INTEGER NOT NULL DEFAULT 0, last_launch INTEGER NOT NULL DEFAULT 0
-        );
-        CREATE TABLE IF NOT EXISTS desktop_scenario (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS desktop_scenario_step (
-            scenario_id INTEGER NOT NULL REFERENCES desktop_scenario(id) ON DELETE CASCADE,
-            position INTEGER NOT NULL, application_id INTEGER NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
-            delay_ms INTEGER NOT NULL CHECK(delay_ms BETWEEN 0 AND 3600000), enabled INTEGER NOT NULL,
-            PRIMARY KEY(scenario_id, position)
-        );
-    )");
-    transaction.commit();
+    xlibrary::validate_profile(database.get_connection());
+}
+
+int CatalogStore::schema_version() const {
+    return xlibrary::read_schema_version(database.get_connection());
+}
+
+void CatalogStore::backup_database(const QString &destination) const {
+    xlibrary::backup_database(database.get_connection(), filesystem_path(destination));
 }
 
 QString CatalogStore::restore_backup(const QString &source, const QString &destination) {
@@ -194,7 +149,7 @@ QString CatalogStore::restore_backup(const QString &source, const QString &desti
         Statement check(input.get(), "PRAGMA quick_check;");
         if (!check.next() || check.text(0) != "ok")
             fail(QCoreApplication::translate("XLibrary", "The SQLite backup is damaged."));
-        Statement schema(input.get(), "SELECT a.id,a.name,a.path,t.id,t.name,at.application_id,at.tag_id "
+        Statement schema(input.get(), "SELECT a.id,a.name,t.id,t.name,at.application_id,at.tag_id "
                                       "FROM applications a, tags t, application_tags at LIMIT 0;");
         schema.next();
         sqlite3 *raw_destination = nullptr;
@@ -249,9 +204,10 @@ catalog_snapshot CatalogStore::read() const {
     catalog_snapshot result;
     auto *connection = database.get_connection();
     Statement applications(connection, R"(
-        SELECT a.id, a.name, a.path, coalesce(d.arguments,''), coalesce(d.working_directory,''),
-               coalesce(d.favorite,0), coalesce(d.last_launch,0)
-        FROM applications a LEFT JOIN desktop_application d ON a.id = d.application_id ORDER BY a.id;
+        SELECT a.id, a.name, c.path, c.arguments, c.working_directory,
+               coalesce(d.favorite,0), coalesce(d.last_launch,0),c.id,c.target_id
+        FROM applications a JOIN launch_configuration c ON c.id=a.configuration_id
+        LEFT JOIN desktop_application d ON a.id = d.application_id ORDER BY a.id;
     )");
     QHash<qint64, qsizetype> rows;
     while (applications.next()) {
@@ -263,9 +219,22 @@ catalog_snapshot CatalogStore::read() const {
         record.working_directory = applications.text(4);
         record.favorite = applications.number(5) != 0;
         record.last_launch = applications.number(6);
+        record.configuration_id = applications.number(7);
+        record.target_id = applications.number(8);
         record.available = QFileInfo(record.path).isFile();
         rows.insert(record.id, result.applications.size());
         result.applications.append(std::move(record));
+    }
+    Statement sources(connection, "SELECT a.id,s.source_key FROM applications a JOIN discovery_source s "
+                                  "ON s.configuration_id=a.configuration_id ORDER BY s.kind,s.source_key;");
+    while (sources.next()) {
+        const auto row = rows.constFind(sources.number(0));
+        if (row != rows.cend()) {
+            auto &record = result.applications[*row];
+            record.discovery_sources.append(sources.text(1));
+            if (record.discovery_source.isEmpty())
+                record.discovery_source = sources.text(1);
+        }
     }
     Statement tags(connection, "SELECT name FROM tags ORDER BY name COLLATE NOCASE;");
     while (tags.next()) {
@@ -297,14 +266,11 @@ catalog_snapshot CatalogStore::read() const {
 void CatalogStore::write_metadata(qint64 id, const app_record &record) {
     auto *connection = database.get_connection();
     Statement metadata(connection, R"(
-        INSERT INTO desktop_application(application_id, arguments, working_directory, favorite) VALUES(?,?,?,?)
-        ON CONFLICT(application_id) DO UPDATE SET arguments=excluded.arguments,
-        working_directory=excluded.working_directory, favorite=excluded.favorite;
+        INSERT INTO desktop_application(application_id, favorite) VALUES(?,?)
+        ON CONFLICT(application_id) DO UPDATE SET favorite=excluded.favorite;
     )");
     metadata.bind(1, id);
-    metadata.bind(2, record.arguments);
-    metadata.bind(3, record.working_directory);
-    metadata.bind(4, record.favorite);
+    metadata.bind(2, record.favorite);
     metadata.next();
     Statement clear(connection, "DELETE FROM application_tags WHERE application_id = ?;");
     clear.bind(1, id);
@@ -328,37 +294,46 @@ void CatalogStore::write_metadata(qint64 id, const app_record &record) {
     }
 }
 
+void CatalogStore::write_source(qint64 configuration_id, const app_record &record) {
+    if (record.discovery_source.isEmpty())
+        return;
+    Statement source(database.get_connection(),
+                     "INSERT OR IGNORE INTO discovery_source(configuration_id,kind,source_key) VALUES(?,?,?);");
+    source.bind(1, configuration_id);
+    source.bind(2, QFileInfo(record.discovery_source).suffix().compare("desktop", Qt::CaseInsensitive) == 0
+                       ? QString("desktop")
+                   : QFileInfo(record.discovery_source).suffix().compare("lnk", Qt::CaseInsensitive) == 0
+                       ? QString("shortcut")
+                       : QString("discovery"));
+    source.bind(3, record.discovery_source);
+    source.next();
+}
+
 qint64 CatalogStore::save_application(const app_record &record) {
     validate_application(record);
     auto *connection = database.get_connection();
     Transaction transaction(connection);
+    const auto configuration_id =
+        xlibrary::ensure_launch_configuration(connection, filesystem_path(record.path), record.arguments.toStdString(),
+                                              filesystem_path(record.working_directory));
     qint64 id = record.id;
-    Statement duplicate(connection, "SELECT id, name, path FROM applications WHERE id != ?;");
-    duplicate.bind(1, id);
-    while (duplicate.next()) {
-        if (duplicate.text(1) == record.name || normalized_path(duplicate.text(2)) == normalized_path(record.path)) {
-            throw std::runtime_error(QCoreApplication::translate(
-                                         "XLibrary", "An application with this name or path is already in the library.")
-                                         .toStdString());
-        }
-    }
     if (id == 0) {
-        const auto name = record.name.toUtf8();
-        if (!database.add_application(std::string(name.constData(), name.size()), filesystem_path(record.path)))
-            throw std::runtime_error(
-                QCoreApplication::translate("XLibrary", "The application is already in the library.").toStdString());
+        Statement insert(connection, "INSERT INTO applications(name,configuration_id) VALUES(?,?);");
+        insert.bind(1, record.name);
+        insert.bind(2, configuration_id);
+        insert.next();
         id = sqlite3_last_insert_rowid(connection);
+        write_source(configuration_id, record);
     } else {
-        Statement update(connection, "UPDATE applications SET name = ?, path = ? WHERE id = ?;");
+        Statement update(connection, "UPDATE applications SET name=?,configuration_id=? WHERE id=?;");
         update.bind(1, record.name);
-        update.bind(2, record.path);
+        update.bind(2, configuration_id);
         update.bind(3, id);
         update.next();
-        if (sqlite3_changes(connection) == 0) {
+        if (sqlite3_changes(connection) == 0)
             throw std::runtime_error(
                 QCoreApplication::translate("XLibrary", "The application has already been removed from the library.")
                     .toStdString());
-        }
     }
     write_metadata(id, record);
     transaction.commit();
@@ -478,13 +453,6 @@ catalog_import_result CatalogStore::import_records(const QVector<app_record> &re
         }
     }
     Transaction transaction(database.get_connection());
-    QSet<QString> names;
-    QSet<QString> paths;
-    Statement current(database.get_connection(), "SELECT name, path FROM applications;");
-    while (current.next()) {
-        names.insert(current.text(0));
-        paths.insert(normalized_path(current.text(1)));
-    }
     catalog_import_result result;
     for (qsizetype index = 0; index < candidates.size(); ++index) {
         if (control && control->phase.load() == discovery_phase::cancelling)
@@ -492,34 +460,28 @@ catalog_import_result CatalogStore::import_records(const QVector<app_record> &re
         if (progress)
             progress(index, candidates.size());
         const auto &record = *candidates[index];
-        const auto path = normalized_path(record.path);
-        if (names.contains(record.name) || paths.contains(path)) {
+        const auto configuration_id = xlibrary::ensure_launch_configuration(
+            database.get_connection(), filesystem_path(record.path), record.arguments.toStdString(),
+            filesystem_path(record.working_directory));
+        write_source(configuration_id, record);
+        Statement duplicate(database.get_connection(), "SELECT id FROM applications WHERE configuration_id=? LIMIT 1;");
+        duplicate.bind(1, configuration_id);
+        if (duplicate.next()) {
             ++result.duplicates;
             if (issues)
                 issues->append(discovery_issue{
                     record.discovery_source.isEmpty() ? record.path : record.discovery_source,
-                    names.contains(record.name)
-                        ? QCoreApplication::translate("XLibrary",
-                                                      "The library already contains an entry with this name.")
-                        : QCoreApplication::translate("XLibrary",
-                                                      "The library already contains an entry with this path."),
+                    QCoreApplication::translate("XLibrary", "This launch configuration is already in the library."),
                     discovery_issue_kind::duplicate});
-        } else {
-            if (!database.add_application(record.name.toStdString(), filesystem_path(record.path))) {
-                ++result.duplicates;
-                if (issues)
-                    issues->append(discovery_issue{
-                        record.discovery_source.isEmpty() ? record.path : record.discovery_source,
-                        QCoreApplication::translate("XLibrary", "The entry already exists in the database."),
-                        discovery_issue_kind::duplicate});
-                continue;
-            }
-            const auto id = sqlite3_last_insert_rowid(database.get_connection());
-            write_metadata(id, record);
-            names.insert(record.name);
-            paths.insert(path);
-            ++result.added;
+            continue;
         }
+        Statement insert(database.get_connection(), "INSERT INTO applications(name,configuration_id) VALUES(?,?);");
+        insert.bind(1, record.name);
+        insert.bind(2, configuration_id);
+        insert.next();
+        const auto id = sqlite3_last_insert_rowid(database.get_connection());
+        write_metadata(id, record);
+        ++result.added;
     }
     if (control) {
         // The only cancellation boundary: a request before this point rolls back the entire transaction.
@@ -531,4 +493,106 @@ catalog_import_result CatalogStore::import_records(const QVector<app_record> &re
     if (progress)
         progress(candidates.size(), candidates.size());
     return result;
+}
+
+QVector<path_relocation> CatalogStore::preview_relocation(const QString &old_root, const QString &new_root) const {
+    if (!QFileInfo(old_root).isAbsolute() || !QFileInfo(new_root).isAbsolute() || !QFileInfo(new_root).isDir())
+        throw std::invalid_argument(
+            QCoreApplication::translate("XLibrary", "Choose an absolute old folder and an existing new folder.")
+                .toStdString());
+    const auto old_prefix = QDir::cleanPath(QDir::fromNativeSeparators(old_root));
+    const auto new_prefix = QDir::cleanPath(QDir::fromNativeSeparators(new_root));
+    const auto replace_root = [&](const QString &path) -> QString {
+        if (path.isEmpty())
+            return {};
+        const auto clean = QDir::cleanPath(QDir::fromNativeSeparators(path));
+        if (clean.compare(old_prefix, path_case_sensitivity) == 0)
+            return new_prefix;
+        const auto prefix = old_prefix.endsWith('/') ? old_prefix : old_prefix + '/';
+        if (!clean.startsWith(prefix, path_case_sensitivity))
+            return path;
+        return QDir(new_prefix).filePath(clean.mid(prefix.size()));
+    };
+    QVector<path_relocation> result;
+    const auto snapshot = read();
+    for (const auto &record : snapshot.applications) {
+        if (record.available)
+            continue;
+        const auto replacement = replace_root(record.path);
+        if (replacement == record.path)
+            continue;
+        path_relocation change{record.id,
+                               record.name,
+                               record.path,
+                               replacement,
+                               record.working_directory,
+                               replace_root(record.working_directory),
+                               {}};
+        if (!QFileInfo(replacement).isFile())
+            change.issue = QCoreApplication::translate("XLibrary", "The replacement file was not found.");
+#ifdef Q_OS_LINUX
+        else if (QFileInfo(replacement).suffix() != "desktop" && !QFileInfo(replacement).isExecutable())
+            change.issue = QCoreApplication::translate("XLibrary", "The replacement file is not executable.");
+#endif
+        if (change.issue.isEmpty() && !change.new_directory.isEmpty() && !QFileInfo(change.new_directory).isDir())
+            change.issue = QCoreApplication::translate("XLibrary", "The replacement working directory was not found.");
+        change.uses_existing_configuration =
+            std::any_of(snapshot.applications.cbegin(), snapshot.applications.cend(), [&](const app_record &other) {
+                return other.id != record.id && normalized_path(other.path) == normalized_path(change.new_path) &&
+                       other.arguments == record.arguments &&
+                       normalized_path(other.working_directory) == normalized_path(change.new_directory);
+            });
+        result.append(std::move(change));
+    }
+    return result;
+}
+
+void CatalogStore::apply_relocation(const QVector<path_relocation> &changes) {
+    if (changes.isEmpty())
+        throw std::invalid_argument(
+            QCoreApplication::translate("XLibrary", "No paths selected for recovery.").toStdString());
+    Transaction transaction(database.get_connection());
+    const auto current = read();
+    QSet<qint64> seen;
+    for (const auto &change : changes) {
+        const auto record = std::find_if(current.applications.cbegin(), current.applications.cend(),
+                                         [&](const app_record &item) { return item.id == change.application_id; });
+        if (record == current.applications.cend() || record->path != change.old_path ||
+            record->working_directory != change.old_directory || seen.contains(change.application_id))
+            throw std::invalid_argument(
+                QCoreApplication::translate("XLibrary", "The library changed. Preview path recovery again.")
+                    .toStdString());
+        seen.insert(change.application_id);
+        if (!change.issue.isEmpty() || !QFileInfo(change.new_path).isFile())
+            throw std::invalid_argument(
+                QCoreApplication::translate("XLibrary", "A replacement application file is unavailable.")
+                    .toStdString());
+#ifdef Q_OS_LINUX
+        if (QFileInfo(change.new_path).suffix() != "desktop" && !QFileInfo(change.new_path).isExecutable())
+            throw std::invalid_argument(
+                QCoreApplication::translate("XLibrary", "The replacement file is not executable.").toStdString());
+#endif
+        auto updated = *record;
+        updated.path = change.new_path;
+        updated.working_directory = change.new_directory;
+        validate_application(updated);
+        if (!updated.working_directory.isEmpty() && !QFileInfo(updated.working_directory).isDir())
+            throw std::invalid_argument(
+                QCoreApplication::translate("XLibrary", "The replacement working directory was not found.")
+                    .toStdString());
+        const auto configuration_id = xlibrary::ensure_launch_configuration(
+            database.get_connection(), filesystem_path(updated.path), updated.arguments.toStdString(),
+            filesystem_path(updated.working_directory));
+        Statement sources(database.get_connection(),
+                          "INSERT OR IGNORE INTO discovery_source(configuration_id,kind,source_key) "
+                          "SELECT ?,kind,source_key FROM discovery_source WHERE configuration_id=?;");
+        sources.bind(1, configuration_id);
+        sources.bind(2, record->configuration_id);
+        sources.next();
+        Statement update(database.get_connection(), "UPDATE applications SET configuration_id=? WHERE id=?;");
+        update.bind(1, configuration_id);
+        update.bind(2, change.application_id);
+        update.next();
+    }
+    transaction.commit();
 }

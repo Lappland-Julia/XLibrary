@@ -8,6 +8,8 @@
 #include <thread>
 #include <utility>
 
+// Устаревший совместимый наблюдатель одного PID. GUI получает состояние через
+// desktop_platform::running_paths; этот класс не управляет состоянием каталога.
 class Heartbeat {
 private:
     static std::move_only_function<std::pair<bool, std::uint32_t>()>

@@ -6,6 +6,8 @@
 #include "Application.h"
 #include "Heartbeat.h"
 
+// Устаревший совместимый каталог в памяти с поиском по имени. GUI его не использует;
+// хранение, идентичность и очередь запуска принадлежат CatalogStore/DesktopService.
 class Manager {
 private:
     std::vector<Application> applications{};

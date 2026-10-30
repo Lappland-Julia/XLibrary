@@ -159,7 +159,8 @@ def main():
         raise RuntimeError(f"Output already exists; choose another --output-path: {output}")
     cache.mkdir(parents=True, exist_ok=True)
     run(["cmake", "--build", build, "--config", "Release", "--parallel", "4"])
-    info = {"version": config["version"], "system": "Linux", "architecture": "x86_64", "configuration": "Release",
+    info = {"version": config["version"], "debian_version": config["debian_version"],
+            "system": "Linux", "architecture": "x86_64", "configuration": "Release",
             "qt_version": config["qt_version"], "compiler": config["compiler_id"],
             "compiler_version": config["compiler_version"], "format": options.format,
             "source_commit": capture(["git", "-C", repository, "rev-parse", "HEAD"]),

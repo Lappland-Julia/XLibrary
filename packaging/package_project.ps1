@@ -53,8 +53,15 @@ function convert_to_wsl_path([string]$path) {
 }
 
 $version = (Get-Content -LiteralPath "$repository/VERSION" -Raw).Trim()
-if ($version -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') {
-    throw 'VERSION must contain a version in major.minor.patch format.'
+$version_match = [regex]::Match($version, '\A(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?<prerelease>[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?\z')
+if (-not $version_match.Success) {
+    throw 'VERSION must contain a valid SemVer version (major.minor.patch[-prerelease][+build]).'
+}
+$prerelease = $version_match.Groups['prerelease'].Value
+if ($prerelease) {
+    foreach ($part in ($prerelease -split '\.')) {
+        if ($part -match '^0[0-9]+$') { throw 'Numeric SemVer prerelease identifiers must not contain leading zeroes.' }
+    }
 }
 $output = Join-Path (resolve_repository_path $OutputRoot) "v$version"
 if (Test-Path -LiteralPath $output) { throw "Output already exists; choose another -OutputRoot: $output" }
@@ -174,8 +181,8 @@ $package_paths = [Collections.Generic.List[string]]::new()
 if ($build_windows) {
     & "$PSScriptRoot/build_release.ps1" @windows_parameters
     if (-not $?) { throw 'Windows packaging failed.' }
-    $package_paths.Add("windows-$compiler/XLibrary-$version-pre-release-windows-x64-$compiler-portable.zip")
-    $package_paths.Add("windows-$compiler/XLibrary-$version-pre-release-windows-x64-$compiler-setup.exe")
+    $package_paths.Add("windows-$compiler/XLibrary-$version-windows-x64-$compiler-portable.zip")
+    $package_paths.Add("windows-$compiler/XLibrary-$version-windows-x64-$compiler-setup.exe")
 }
 if ($build_linux) {
     if ($LinuxEnvironment -eq 'Docker') {
@@ -200,7 +207,9 @@ if ($build_linux) {
             '--build-path', $linux_build, '--output-path', $linux_output, '--format', 'all')
     }
     $package_paths.Add("linux-x86_64/XLibrary-$version-linux-x86_64.AppImage")
-    $package_paths.Add("linux-x86_64/xlibrary_${version}_amd64.deb")
+    $linux_info = Get-Content -LiteralPath "$output/linux-x86_64/build-info.json" -Raw | ConvertFrom-Json
+    if ($linux_info.version -ne $version) { throw 'Linux package version does not match VERSION.' }
+    $package_paths.Add("linux-x86_64/xlibrary_$($linux_info.debian_version)_amd64.deb")
 }
 if ((Get-Content -LiteralPath "$repository/VERSION" -Raw).Trim() -ne $version) {
     throw 'VERSION changed during packaging; no combined manifest was created.'

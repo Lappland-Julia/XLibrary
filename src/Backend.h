@@ -3,6 +3,9 @@
 
 #pragma once
 
+// Совместимый общий заголовок прежнего API. GUI работает через CatalogStore и
+// desktop_platform; этот заголовок не задаёт отдельные правила каталога или запуска.
+
 #include "Application.h"
 #include "Database.h"
 #include "Heartbeat.h"

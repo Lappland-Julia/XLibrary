@@ -109,7 +109,8 @@ try {
     }
     if ((Read-Cache 'XLIBRARY_NATIVE_CPU') -ne 'OFF') { throw 'Distribution requires XLIBRARY_NATIVE_CPU=OFF.' }
     $qt_version = $config.qt_version
-    $version = Read-Cache 'CMAKE_PROJECT_VERSION'
+    $version = $config.version
+    $channel = if ($config.prerelease -eq 'TRUE') { 'pre-release' } else { 'stable' }
     $source_manifest = Get-Content -LiteralPath (Resolve-RepositoryPath $QtSourceManifest) -Raw |
         ConvertFrom-Json -AsHashtable
     if (-not $source_manifest.ContainsKey($qt_version)) {
@@ -124,10 +125,10 @@ try {
             throw 'Install Inno Setup 6.3+ and pass -InnoCompiler or put ISCC.exe on PATH.'
         }
     }
-    if (-not $OutputPath) { $OutputPath = "release/v$version-pre-release-$compiler" }
+    if (-not $OutputPath) { $OutputPath = "release/v$version-$compiler" }
     $output = Resolve-RepositoryPath $OutputPath
     if (Test-Path -LiteralPath $output) { throw "Output already exists; choose a new -OutputPath: $output" }
-    $package_name = "XLibrary-$version-pre-release-windows-x64-$compiler-portable"
+    $package_name = "XLibrary-$version-windows-x64-$compiler-portable"
     $stage = Join-Path $repository "build/release-$([guid]::NewGuid().ToString('N'))"
     $package = Join-Path $stage $package_name
     invoke_cmake -step 'Release build' -command_arguments @('--build', $build, '--config', 'Release',
@@ -257,7 +258,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Cannot identify source changes.' }
     @{
         version = $version
-        channel = 'pre-release'
+        channel = $channel
         architecture = 'x64'
         configuration = 'Release'
         qt_version = $qt_version
@@ -271,19 +272,19 @@ try {
 
     New-Item -ItemType File -Path "$package/portable.flag" | Out-Null
     @"
-XLibrary $version pre-release - Windows x64 ($compiler)
+XLibrary $version - Windows x64 ($compiler)
 
 Run XLibrary.exe. Keep the DLLs and plugins beside it.
 No Qt installation or administrator rights are required.
 portable.flag enables portable mode: database and settings use data/.
 Keep this folder writable. Move the whole folder to move the program and data.
 The installer uses the Windows user profile and preserves data on uninstall.
-This pre-release has no digital signature. See licenses/, sources/ and THIRD_PARTY_NOTICES.txt.
+This build has no digital signature. See licenses/, sources/ and THIRD_PARTY_NOTICES.txt.
 "@ | Set-Content -LiteralPath "$package/README.txt" -Encoding utf8
     & "$repository/.github/scripts/check_package.ps1" -PackagePath $package -Compiler $compiler
     New-Item -ItemType Directory -Path $output | Out-Null
     if ($Installer) {
-        & $InnoCompiler /Qp "/DAppVersion=$version" "/DCompiler=$compiler" "/DPackageDir=$package" "/DOutputDir=$output" "$PSScriptRoot/xlibrary.iss"
+        & $InnoCompiler /Qp "/DAppVersion=$version" "/DNumericVersion=$($config.windows_numeric_version)" "/DCompiler=$compiler" "/DPackageDir=$package" "/DOutputDir=$output" "$PSScriptRoot/xlibrary.iss"
         if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }
     }
     Compress-Archive -LiteralPath $package -DestinationPath "$output/$package_name.zip" -CompressionLevel Optimal

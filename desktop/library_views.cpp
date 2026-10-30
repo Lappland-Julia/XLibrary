@@ -28,6 +28,7 @@
 #include "library_views.h"
 #include "localization.h"
 #include "notification_banner.h"
+#include "profile_view.h"
 #include "selection_button.h"
 #include "ui_helpers.h"
 
@@ -537,6 +538,8 @@ QWidget *library(const ui_context &context, QWidget *parent) {
         const QSignalBlocker blocker(sort);
         sort->setCurrentIndex(mode);
         view->header()->setSortIndicator(service->filter.sortColumn(), direction);
+        if (service->profile_busy() || service->restart_required())
+            return;
         service->settings.setValue("library/sort", mode);
         service->settings.setValue("library/sort_order", static_cast<int>(direction));
     });
@@ -565,10 +568,14 @@ QWidget *library(const ui_context &context, QWidget *parent) {
     auto *recovery_layout = new QVBoxLayout(recovery_actions);
     auto *retry = new QPushButton(QCoreApplication::translate("XLibrary", "Retry"));
     auto *profile = new QPushButton(QCoreApplication::translate("XLibrary", "Open profile folder"));
-    auto *restore = new QPushButton(QCoreApplication::translate("XLibrary", "Restore backup…"));
+    auto *restore = new QPushButton(QCoreApplication::translate("XLibrary", "Restore database backup…"));
+    auto *restore_profile = new QPushButton(QCoreApplication::translate("XLibrary", "Restore complete profile…"));
+    auto *restart = new QPushButton(QCoreApplication::translate("XLibrary", "Restart XLibrary"));
     recovery_layout->addWidget(retry);
     recovery_layout->addWidget(profile);
     recovery_layout->addWidget(restore);
+    recovery_layout->addWidget(restore_profile);
+    root->addWidget(restart);
     empty_layout->addWidget(recovery_actions, 0, Qt::AlignHCenter);
     QObject::connect(retry, &QPushButton::clicked, service, &DesktopService::retry_library);
     QObject::connect(profile, &QPushButton::clicked, service, &DesktopService::open_profile_folder);
@@ -578,13 +585,28 @@ QWidget *library(const ui_context &context, QWidget *parent) {
                                          QFileInfo(service->library_path()).absolutePath());
         if (path.isEmpty())
             return;
-        if (QMessageBox::question(
-                widget, QCoreApplication::translate("XLibrary", "Restore library"),
-                QCoreApplication::translate(
-                    "XLibrary", "Replace the library with this backup? The current database files will be preserved."),
-                QMessageBox::Yes | QMessageBox::No, QMessageBox::No) == QMessageBox::Yes)
+        if (QMessageBox::question(widget, QCoreApplication::translate("XLibrary", "Restore library"),
+                                  QCoreApplication::translate(
+                                      "XLibrary",
+                                      "Replace only the database with this SQLite backup? Settings are not restored. "
+                                      "The current database files will be preserved."),
+                                  QMessageBox::Yes | QMessageBox::No, QMessageBox::No) == QMessageBox::Yes)
             service->restore_library(path);
     });
+    QObject::connect(restore_profile, &QPushButton::clicked, widget, [=] { select_profile_restore(context, widget); });
+    QObject::connect(restart, &QPushButton::clicked, service, &DesktopService::restart_application);
+    const auto update_recovery = [=] {
+        const bool allowed = !service->profile_busy() && !service->restart_required();
+        retry->setEnabled(allowed);
+        restore->setEnabled(allowed && !service->library_path().isEmpty());
+        restore_profile->setEnabled(allowed && !service->is_discovering() && !service->is_scenario_active());
+        restart->setVisible(service->restart_required());
+        restart->setEnabled(!service->profile_busy());
+    };
+    QObject::connect(service, &DesktopService::profile_state_changed, widget, update_recovery);
+    QObject::connect(service, &DesktopService::discovery_changed, widget, update_recovery);
+    QObject::connect(service, &DesktopService::scenario_changed, widget, [=] { update_recovery(); });
+    update_recovery();
     empty_layout->addStretch();
     stack->addWidget(empty);
     auto *library_transition = new PageTransition(stack_widget);
@@ -614,8 +636,8 @@ QWidget *library(const ui_context &context, QWidget *parent) {
         stack->setCurrentWidget(has_rows ? static_cast<QWidget *>(view) : empty);
         empty_actions->setVisible(no_apps);
         const bool failed = !service->is_ready() && !service->is_opening() && !service->library_error().isEmpty();
-        recovery_actions->setVisible(failed);
-        restore->setEnabled(!service->library_path().isEmpty());
+        recovery_actions->setVisible(failed || service->restart_required());
+        update_recovery();
         if (no_apps && empty_layout->indexOf(progress) < 0) {
             root->removeWidget(progress);
             empty_layout->insertWidget(empty_layout->count() - 1, progress);
@@ -735,6 +757,12 @@ QWidget *details(const ui_context &context, QWidget *parent) {
     folder->setFixedWidth(44);
     path_row->addWidget(folder);
     root->addLayout(path_row);
+    auto *recover_path = button(QCoreApplication::translate("XLibrary", "Locate application…"));
+    root->addWidget(recover_path);
+    QObject::connect(recover_path, &QPushButton::clicked, contents, [=] {
+        if (const auto *record = service->selected())
+            select_application_replacement(service, *record, contents);
+    });
     auto *arguments = label("", "muted");
     root->addWidget(arguments);
     root->addSpacing(8);
@@ -759,6 +787,9 @@ QWidget *details(const ui_context &context, QWidget *parent) {
         path->setText(record ? QDir::toNativeSeparators(record->path) : QString{});
         path->setCursorPosition(0);
         path->setToolTip(path->text());
+        recover_path->setVisible(record && !record->available);
+        recover_path->setEnabled(record && !service->profile_busy() && !service->restart_required() &&
+                                 !service->is_discovering() && !service->is_scenario_active());
         arguments->setText(record && !record->arguments.isEmpty()
                                ? QCoreApplication::translate("XLibrary", "Arguments: ") + record->arguments
                                : QString{});
@@ -777,6 +808,9 @@ QWidget *details(const ui_context &context, QWidget *parent) {
         icon->setPixmap(image.pixmap(56, 56));
     };
     QObject::connect(service, &DesktopService::selection_changed, contents, update);
+    QObject::connect(service, &DesktopService::profile_state_changed, contents, update);
+    QObject::connect(service, &DesktopService::discovery_changed, contents, update);
+    QObject::connect(service, &DesktopService::scenario_changed, contents, [=] { update(); });
     QObject::connect(&service->model, &QAbstractItemModel::dataChanged, contents, [=] { update(); });
     update();
     auto *result = scroll(contents);
@@ -789,6 +823,15 @@ QWidget *application_menu(const ui_context &context, QWidget *parent) {
     auto *menu = new QMenu(parent);
     for (const auto &id : {"launch", "new_instance", "open_folder", "copy_path", "favorite", "edit_application"})
         menu->addAction(context.actions.value(id));
+    auto *service = static_cast<DesktopService *>(context.service);
+    if (const auto *record = service->selected(); record && !record->available) {
+        auto *recover = menu->addAction(QCoreApplication::translate("XLibrary", "Locate application…"));
+        recover->setEnabled(!service->profile_busy() && !service->restart_required() && !service->is_discovering() &&
+                            !service->is_scenario_active());
+        const auto original = *record;
+        QObject::connect(recover, &QAction::triggered, menu,
+                         [=] { select_application_replacement(service, original, parent); });
+    }
     menu->addSeparator();
     menu->addAction(context.actions.value("remove_application"));
     return menu;

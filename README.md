@@ -58,12 +58,46 @@ An import error leaves the catalog unchanged. Files are limited to 5 MiB.
 
 Discovery keeps a report in the library and in Settings → Library. Open **Last scan details** to
 read or copy it. The summary separates additions, duplicates, skipped entries, and errors.
-Duplicate names or normalized paths are skipped; existing entries keep their metadata.
+Repeated launch configurations are skipped; existing entries keep their metadata and collect
+discovery sources. Names may repeat, and one EXE may have multiple argument/working-directory
+profiles. Symlinks share a canonical target while retaining their invocation paths.
 Cancelling discovery before its transaction is committed rolls back all additions. Once commit
 starts, cancellation is unavailable. JSON import and discovery never launch applications.
 
 JSON export is an application catalog transfer, not a complete profile backup: scenarios,
 unused tags, settings, and launch history are not included.
+
+## Profile backup and recovery
+
+**Settings → Profile** creates a complete `.xlprofile` backup with applications, launch
+configurations, all tags, scenarios, settings, discovery sources, and launch history. Before
+restoration, XLibrary checks the format, schema, date, contents, and file fingerprint and shows
+a preview. Replacing the profile preserves its previous database, journals, settings, and a
+complete backup when readable. An interrupted replacement rolls back at the next startup;
+after a successful restore, restart XLibrary to apply all settings.
+
+Backups contain private paths and arguments. Native plugin binaries and OS-stored GitHub tokens
+are not transferred; the local token remains local. JSON catalog import/export remains separate.
+Schema migrations are sequential and transactional; an unsupported newer schema is refused
+without changing it. Existing profiles receive a `.before-schema-v3.*.bak` snapshot before migration.
+
+Start `XLibrary --safe-mode` to use the built-in interface without loading user plugins. Disable
+the faulty module in **Settings → Plugins**, save, and restart. The profile page shows database
+and settings locations, schema/product versions, portable/installed mode, and the last error.
+Its diagnostic export excludes catalog contents, arguments, settings values, tokens, and raw errors.
+
+For a missing application, use **Locate application…** in its details. **Settings → Profile →
+Recover moved folder…** previews replacements for a moved directory before applying selected
+valid entries together. Card IDs, tags, favorites, history, arguments, and scenario references
+are preserved.
+
+Storage migrations and launch identity belong to `xlibrary_core`; `CatalogStore` manages
+cards and their relations. `DesktopService` owns operation states and request IDs, while
+`desktop_platform` owns discovery, launch, activation, and process monitoring. Linux user
+arguments share one core parser; freedesktop `Exec` retains its separate standard format.
+The older `Manager`, `Heartbeat`, and `WindowManager` interfaces remain compatible legacy
+APIs; the GUI uses the service/platform contract and reuses Windows `Application` and
+`RegistryScan` and Linux process helpers.
 
 ## Updates
 

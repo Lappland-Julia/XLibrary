@@ -10,11 +10,15 @@
 #include <QTemporaryDir>
 #include <QTimer>
 
+#include "Database.h"
 #include "desktop/appearance.h"
 #include "desktop/application_paths.h"
 #include "desktop/desktop_service.h"
 #include "desktop/localization.h"
 #include "desktop/main_window.h"
+#include "desktop/path_helpers.h"
+#include "desktop/platform_integration.h"
+#include "desktop/profile_backup.h"
 
 int main(int argc, char *argv[]) {
     QApplication application(argc, argv);
@@ -46,14 +50,12 @@ int main(int argc, char *argv[]) {
             throw std::runtime_error(
                 QCoreApplication::translate("XLibrary", "Could not create the XLibrary settings folder.")
                     .toStdString());
-        QSettings language_settings(profile + "/settings.ini", QSettings::IniFormat);
-        localization.apply(language_settings.value("interface/language", "system").toString());
         const auto server_name =
             "xlibrary-" + QString::fromLatin1(
                               QCryptographicHash::hash(profile.toUtf8(), QCryptographicHash::Sha256).toHex().left(24));
         QLockFile instance_lock(profile + "/instance.lock");
         instance_lock.setStaleLockTime(0);
-        if (!instance_lock.tryLock(0)) {
+        if (!instance_lock.tryLock(application.arguments().contains("--wait-for-profile") ? 5000 : 0)) {
             if (instance_lock.error() != QLockFile::LockFailedError)
                 throw std::runtime_error(
                     QCoreApplication::translate(
@@ -72,6 +74,19 @@ int main(int argc, char *argv[]) {
                 QCoreApplication::translate("XLibrary", "Another instance of XLibrary is starting or not responding."));
             return 1;
         }
+        const auto database_path =
+            (portable || check_startup) ? profile + "/xlibrary.db" : path_text(Database::get_database_path());
+        ProfileBackup::recover(database_path, profile + "/settings.ini");
+        QSettings language_settings(profile + "/settings.ini", QSettings::IniFormat);
+        localization.apply(language_settings.value("interface/language", "system").toString());
+        QString reconciliation_error;
+        if (language_settings.value("profile/autostart_pending", false).toBool()) {
+            if (desktop_platform::set_autostart(language_settings.value("behavior/autostart", false).toBool(),
+                                                reconciliation_error)) {
+                language_settings.remove("profile/autostart_pending");
+                language_settings.sync();
+            }
+        }
         QLocalServer::removeServer(server_name);
         QLocalServer server;
         server.setSocketOptions(QLocalServer::UserAccessOption);
@@ -79,13 +94,14 @@ int main(int argc, char *argv[]) {
             throw std::runtime_error(
                 QCoreApplication::translate("XLibrary", "Could not open the XLibrary local channel.").toStdString());
         // Portable mode and startup checks use their own directory without replacing the child process environment.
-        const auto database_path = (portable || check_startup) ? profile + "/xlibrary.db" : QString{};
         DesktopService service(nullptr, profile, database_path);
         if (!service.settings.isWritable())
             throw std::runtime_error(
                 QCoreApplication::translate("XLibrary", "Cannot write XLibrary settings. Choose a writable folder.")
                     .toStdString());
         MainWindow window(service);
+        if (!reconciliation_error.isEmpty())
+            QTimer::singleShot(0, &service, [&service, reconciliation_error] { service.notify(reconciliation_error); });
         if (check_startup) {
             QObject::connect(&service, &DesktopService::catalog_changed, &application, [&] {
                 if (service.is_ready()) {

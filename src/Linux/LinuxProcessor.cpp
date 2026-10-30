@@ -16,6 +16,7 @@
 #include <thread>
 #include <vector>
 
+#include "launch_arguments.h"
 #include "LinuxProcessor.h"
 
 namespace {
@@ -60,55 +61,6 @@ std::string utf8_arguments(std::wstring_view arguments) {
             result.push_back(static_cast<char>(0x80 | ((code >> 6) & 0x3f)));
             result.push_back(static_cast<char>(0x80 | (code & 0x3f)));
         }
-    }
-    return result;
-}
-
-std::vector<std::string> split_arguments(std::string_view arguments) {
-    std::vector<std::string> result;
-    std::string argument;
-    char quote = 0;
-    bool started = false;
-    for (std::size_t index = 0; index < arguments.size(); ++index) {
-        const char character = arguments[index];
-        if (character == '\\' && quote != '\'') {
-            if (++index == arguments.size()) {
-                throw std::invalid_argument("Application arguments end with an escape");
-            }
-            const char escaped = arguments[index];
-            if (quote == '"' && escaped != '"' && escaped != '\\' && escaped != '$' && escaped != '`' &&
-                escaped != '\n') {
-                argument.push_back('\\');
-            }
-            if (escaped != '\n') {
-                argument.push_back(escaped);
-                started = true;
-            }
-        } else if (quote != 0) {
-            if (character == quote) {
-                quote = 0;
-            } else {
-                argument.push_back(character);
-            }
-        } else if (character == '\'' || character == '"') {
-            quote = character;
-            started = true;
-        } else if (character == ' ' || character == '\t' || character == '\n' || character == '\r') {
-            if (started) {
-                result.push_back(std::move(argument));
-                argument.clear();
-                started = false;
-            }
-        } else {
-            argument.push_back(character);
-            started = true;
-        }
-    }
-    if (quote != 0) {
-        throw std::invalid_argument("Application arguments contain an unterminated quote");
-    }
-    if (started) {
-        result.push_back(std::move(argument));
     }
     return result;
 }
@@ -207,7 +159,7 @@ bool xlibrary::script_process_matches(std::uint32_t process_id, const std::files
         if (split) {
             command.erase(0, command.starts_with("--split-string=") ? 15 : 2);
             try {
-                interpreter_arguments = split_arguments(command);
+                interpreter_arguments = xlibrary::split_launch_arguments(command);
             } catch (const std::invalid_argument &) {
                 return false;
             }
@@ -387,7 +339,7 @@ xlibrary::process_identity xlibrary::launch_process(const std::filesystem::path 
         working_directory.native().find('\0') != std::string::npos) {
         throw std::invalid_argument("Application paths contain a null character");
     }
-    auto argument_strings = split_arguments(utf8_arguments(arguments));
+    auto argument_strings = split_launch_arguments(utf8_arguments(arguments));
     argument_strings.insert(argument_strings.begin(), executable_path.native());
     std::vector<char *> argument_pointers;
     argument_pointers.reserve(argument_strings.size() + 1);

@@ -22,6 +22,8 @@ inline bool valid_tag_name(const QString &tag) {
 
 struct app_record {
     qint64 id = 0;
+    qint64 target_id = 0;
+    qint64 configuration_id = 0;
     QString name;
     QString path;
     QString arguments;
@@ -32,6 +34,7 @@ struct app_record {
     bool running = false;
     QString new_instance_error;
     QString discovery_source;
+    QStringList discovery_sources;
     qint64 last_launch = 0;
 };
 
@@ -85,8 +88,21 @@ struct catalog_snapshot {
     QVector<scenario_record> scenarios;
 };
 
+struct path_relocation {
+    qint64 application_id = 0;
+    QString name;
+    QString old_path;
+    QString new_path;
+    QString old_directory;
+    QString new_directory;
+    QString issue;
+    bool uses_existing_configuration = false;
+};
+
 Q_DECLARE_METATYPE(app_record)
 Q_DECLARE_METATYPE(scenario_record)
 Q_DECLARE_METATYPE(catalog_snapshot)
+Q_DECLARE_METATYPE(path_relocation)
+Q_DECLARE_METATYPE(QVector<path_relocation>)
 
 #endif
