@@ -20,8 +20,8 @@
 #include "catalog_store.h"
 #include "path_helpers.h"
 #include "profile_backup.h"
-#include "ProfileSchema.h"
 #include "profile_settings.h"
+#include "ProfileSchema.h"
 
 namespace {
 constexpr auto format_id = "io.github.LapplandJulia.XLibrary.profile";

@@ -241,7 +241,8 @@ if(XLIBRARY_ENABLE_CLANG_TIDY)
     find_program(XLIBRARY_CLANG_TIDY NAMES clang-tidy REQUIRED)
     set(xlibrary_tidy_command "${XLIBRARY_CLANG_TIDY}")
     if(MSVC)
-        list(APPEND xlibrary_tidy_command "--extra-arg-before=--driver-mode=cl")
+        # clang-tidy's tooling driver drops the exception mode from MSVC commands.
+        list(APPEND xlibrary_tidy_command "--extra-arg-before=--driver-mode=cl" "--extra-arg=/EHsc")
     endif()
     # Анализируем только собственные цели; Qt помечает RCC-файлы свойством SKIP_LINTING.
     foreach(xlibrary_target IN ITEMS XLibrary xlibrary_core)
