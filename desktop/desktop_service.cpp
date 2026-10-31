@@ -21,7 +21,7 @@
 #include "path_helpers.h"
 #include "platform_integration.h"
 #include "profile_backup.h"
-#include "profile_schema.h"
+#include "ProfileSchema.h"
 
 namespace {
 operation_error exception_error(const QString &operation, const std::exception &error, operation_error_source source) {

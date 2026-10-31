@@ -100,10 +100,10 @@ target_link_libraries(sqlite3 PUBLIC
 
 add_library(xlibrary_core STATIC
 
-        src/profile_schema.h src/profile_schema.cpp
-        src/launch_identity.h src/launch_identity.cpp
-        src/launch_arguments.h src/launch_arguments.cpp
-        src/sqlite_helpers.h
+        src/ProfileSchema.h src/ProfileSchema.cpp
+        src/LaunchIdentity.h src/LaunchIdentity.cpp
+        src/LaunchArguments.h src/LaunchArguments.cpp
+        src/SqliteHelpers.h
 
         src/Application.cpp
         src/Application.h

@@ -5,8 +5,8 @@
 #include <limits>
 #include <stdexcept>
 
-#include "launch_identity.h"
-#include "sqlite_helpers.h"
+#include "LaunchIdentity.h"
+#include "SqliteHelpers.h"
 
 std::string xlibrary::path_utf8(const std::filesystem::path &path) {
     const auto value = path.generic_u8string();

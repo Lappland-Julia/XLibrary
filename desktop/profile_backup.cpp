@@ -20,7 +20,7 @@
 #include "catalog_store.h"
 #include "path_helpers.h"
 #include "profile_backup.h"
-#include "profile_schema.h"
+#include "ProfileSchema.h"
 #include "profile_settings.h"
 
 namespace {

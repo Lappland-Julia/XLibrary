@@ -1,7 +1,7 @@
 #include <stdexcept>
 #include <utility>
 
-#include "launch_arguments.h"
+#include "LaunchArguments.h"
 
 std::vector<std::string> xlibrary::split_launch_arguments(std::string_view arguments) {
     if (arguments.find('\0') != std::string_view::npos) {

@@ -1,4 +1,4 @@
-#include "launch_arguments.h"
+#include "LaunchArguments.h"
 #include "Linux/LinuxProcessor.h"
 #include "localization.h"
 #ifdef XLIBRARY_HAVE_X11

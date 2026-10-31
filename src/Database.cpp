@@ -2,9 +2,9 @@
 #include <string>
 
 #include "Database.h"
-#include "launch_identity.h"
-#include "profile_schema.h"
-#include "sqlite_helpers.h"
+#include "LaunchIdentity.h"
+#include "ProfileSchema.h"
+#include "SqliteHelpers.h"
 
 void Database::execute(const char *sql) const {
     if (sqlite3_exec(this->connection.get(), sql, nullptr, nullptr, nullptr) != SQLITE_OK) {

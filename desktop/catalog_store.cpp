@@ -8,10 +8,10 @@
 #include <stdexcept>
 
 #include "catalog_store.h"
-#include "launch_identity.h"
+#include "LaunchIdentity.h"
 #include "localization.h"
 #include "path_helpers.h"
-#include "profile_schema.h"
+#include "ProfileSchema.h"
 
 void CatalogStore::validate_application(const app_record &record) {
     if (record.name.trimmed().isEmpty() || record.name.size() > 256 || !QFileInfo(record.path).isAbsolute() ||

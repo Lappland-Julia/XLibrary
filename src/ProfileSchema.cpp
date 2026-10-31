@@ -2,9 +2,9 @@
 #include <set>
 #include <vector>
 
-#include "launch_identity.h"
-#include "profile_schema.h"
-#include "sqlite_helpers.h"
+#include "LaunchIdentity.h"
+#include "ProfileSchema.h"
+#include "SqliteHelpers.h"
 
 namespace {
 using xlibrary::sqlite_execute;
