@@ -1,8 +1,9 @@
 # Сборка XLibrary для Windows и Linux
 
-Актуальная версия задаётся файлом [`VERSION`](VERSION). Числа в примерах
-имён пакетов нужно заменять при изменении `VERSION`; Windows-упаковщик пока
-добавляет `pre-release`.
+Актуальная полная SemVer-версия задаётся файлом [`VERSION`](VERSION), например
+`0.4.0`, `0.4.0-rc.1` или `0.4.0-rc.1+build.7`. Её строка сохраняется
+в приложении, manifest и именах Windows/AppImage-пакетов. Примеры имён
+пакетов нужно заменять при изменении `VERSION`.
 Реализованный GUI использует **Qt Widgets**; QML и Qt Quick для сборки не нужны.
 
 ## Общая упаковка выпуска из Windows
@@ -105,6 +106,20 @@ cmake --build --preset linux-clang-debug --parallel 4
 cmake --install cmake-build-linux-release --prefix "$HOME/.local"
 ```
 
+Предупреждения `/W4` (MSVC) или `-Wall -Wextra -Wpedantic` включены для
+собственных GUI и core. Для ограниченного анализа ошибок из `.clang-tidy`
+нужны CMake **3.27+**, Ninja/Makefiles и `clang-tidy` соответствующего toolchain:
+
+```bash
+cmake --preset linux-clang-debug -DXLIBRARY_ENABLE_CLANG_TIDY=ON
+cmake --build --preset linux-clang-debug --parallel 4
+```
+
+Анализ выполняется при компиляции собственных `.cpp`; SQLite, Qt/keychain,
+сгенерированные moc/RCC и системные заголовки исключены. CI включает его
+для Linux Clang Debug и Windows MSVC Debug (Ninja с окружением MSVC).
+Остальные обычные сборки не требуют `clang-tidy`.
+
 Установка Linux добавляет `bin/XLibrary`, ярлык в `share/applications`, значок и лицензию. Для неё нужны системные runtime-пакеты выбранного Qt и Xlib. Если использован отдельный Qt SDK, настройте поиск его библиотек для установленного приложения. Добавьте `$HOME/.local/bin` в PATH для запуска из меню. Для разработки установка приложения не требуется.
 
 В CLion откройте корневой `CMakeLists.txt`, загрузите CMake presets и включите нужный профиль в **Settings → Build, Execution, Deployment → CMake**. Для Linux выберите Linux toolchain. На Windows с WSL выберите toolchain **WSL / Ubuntu**, Linux CMake и Linux Qt внутри WSL. Если профиль скрыт условием ОС Windows-хоста, создайте WSL CMake profile вручную: Build directory `cmake-build-wsl-debug`, Build type `Debug`, без Windows `CMAKE_PREFIX_PATH`. Для Windows выберите совместимые Qt и MSVC/MinGW, как описано ниже. Выберите цель `XLibrary` и Build/Run/Debug. Пользовательские пути храните в игнорируемом `CMakeUserPresets.json`. Не переносите Windows PATH и `QT_QPA_PLATFORM_PLUGIN_PATH` в Linux-конфигурацию запуска.
@@ -158,6 +173,14 @@ chmod +x XLibrary-0.2.0-linux-x86_64.AppImage
 
 **DEB** собирается для Debian 13 и использует системный Qt; пакеты и минимальные версии библиотек определяются `dpkg-shlibdeps`. Упаковка DEB требует Qt, установленный пакетным менеджером: отдельный SDK и Qt новее **6.8.2** для этого формата отклоняются. Системный Qt из testing/unstable тоже может оказаться слишком новым. Платформенные плагины Qt, Wayland и `xdg-utils` объявлены зависимостями. Пакет устанавливает программу в `/usr/bin/XLibrary`, ярлык в меню и значок; пользовательские данные остаются в XDG-профиле.
 
+Debian-версия имеет числовую основу и `~` перед prerelease: любой RC меньше
+финальной версии. Идентификаторы prerelease кодируются по типу и ASCII-порядку,
+чтобы сохранить правила SemVer для числовых, смешанных и вложенных значений.
+Поэтому суффикс имени DEB может отличаться от исходного `rc.1`; точное значение
+есть в `debian_version` файла `build-info.json`. Build metadata в Debian-версию
+не входит и не повышает приоритет обновления; полная версия остаётся в приложении
+и manifest.
+
 ```sh
 sudo apt install ./xlibrary_0.3.2_amd64.deb
 XLibrary
@@ -186,7 +209,13 @@ python3 packaging/build_release.py --build-path cmake-build-debian13-release \
 
 Нужны Windows 10/11 x64, Git, CMake 3.21+, компилятор C++23 и **динамический** Qt 6.5+ с Widgets, Concurrent и Network. Для сборки встроенного перевода нужны Qt LinguistTools (`lrelease`); при установке Qt SDK включите инструменты переводов. Для Ninja нужен `ninja.exe` в PATH. При первой конфигурации CMake скачивает SQLite с проверкой хеша.
 
-Версия приложения задаётся только в корневом файле `VERSION` в формате `major.minor.patch`. CMake использует её для приложения, окна «О программе», ресурсов Windows и упаковщика. После изменения `VERSION` следующая сборка автоматически повторяет конфигурацию.
+Версия приложения задаётся только в корневом файле `VERSION` в формате
+`major.minor.patch[-prerelease][+build]`. CMake передаёт полную строку приложению,
+окну «О программе» и упаковщику; `project()` получает три числа. Ресурсы Windows
+и Inno Setup используют числовую четвёрку `major.minor.patch.0`, где каждое число
+не больше 65535, и отдельную полную строку продукта. Признак prerelease выставляется
+только при наличии prerelease-суффикса. После изменения `VERSION` следующая сборка
+автоматически повторяет конфигурацию.
 
 CI использует Qt **6.8.3**, MSVC 2022 x64 и MinGW **13.1.0** из Qt Online Installer. Для MinGW выбирайте комплект Qt `mingw_64` и соответствующий ему MinGW; для MSVC — `msvc2022_64` и Visual Studio 2022 / Build Tools с Desktop development with C++. Не смешивайте ABI или архитектуры. Скрипты упаковки и проверки требуют **PowerShell 7** (`pwsh`), а не Windows PowerShell 5.1. Упаковка использует `tar.exe` из Windows.
 
@@ -263,10 +292,10 @@ cmake --build build-msvc --config Release --parallel 4
 сохраняется в `<BuildPath>/packaging-release.log`; при ошибке сообщение
 содержит этап, код возврата и путь к логу. `PATH` восстанавливается при выходе.
 
-По умолчанию результат — `release/v0.2.0-pre-release-msvc/` или `release/v0.2.0-pre-release-mingw/`:
+По умолчанию результат — `release/v0.4.0-msvc/` или `release/v0.4.0-mingw/`:
 
-- `XLibrary-0.2.0-pre-release-windows-x64-<compiler>-portable.zip` с корневой папкой приложения;
-- `XLibrary-0.2.0-pre-release-windows-x64-<compiler>-setup.exe`, если задан `-Installer`;
+- `XLibrary-0.4.0-windows-x64-<compiler>-portable.zip` с корневой папкой приложения;
+- `XLibrary-0.4.0-windows-x64-<compiler>-setup.exe`, если задан `-Installer`;
 - `SHA256SUMS.txt` для ZIP и установщика.
 
 `-BuildPath` и `-OutputPath` принимают абсолютные пути или пути от корня репозитория. Существующий OutputPath не перезаписывается. После успеха staging удаляется; после ошибки остаётся в `build/release-<id>` для диагностики. Среда PATH восстанавливается и при ошибках. В Git попадают только исходники и скрипты; build/dist/release игнорируются.
@@ -286,10 +315,10 @@ XLibrary имеет MIT-лицензию; это не меняет лиценз�
 Распакуйте ZIP в доступный для записи каталог, включая путь с пробелами и Unicode:
 
 ```powershell
-Expand-Archive ./release/v0.2.0-pre-release-mingw/*-portable.zip -DestinationPath './build/Проверка пакета'
+Expand-Archive ./release/v0.4.0-mingw/*-portable.zip -DestinationPath './build/Проверка пакета'
 $package = (Get-ChildItem './build/Проверка пакета' -Directory).FullName
 ./.github/scripts/check_package.ps1 -PackagePath $package -Compiler mingw
-Get-FileHash ./release/v0.2.0-pre-release-mingw/*-portable.zip -Algorithm SHA256
+Get-FileHash ./release/v0.4.0-mingw/*-portable.zip -Algorithm SHA256
 ```
 
 Для MSVC замените каталог и `-Compiler msvc`. Сверьте хеш с `SHA256SUMS.txt`. Проверка проверяет DLL, метаданные и лицензии, запускает копию приложения с очищенным PATH и без Qt-переменных из IDE, из другого рабочего каталога с пробелами/Unicode. `--check-startup` создаёт окно и каталог во временном профиле и завершается с 0; проверяются запуск с флагом portable и без него, а также неизменность существующего portable-профиля. Логи: `build/package-check/`. Скрипт не меняет ваш рабочий пакет.
@@ -316,7 +345,10 @@ Windows ZIP и Inno Setup, интерактивные сценарии уста�
 1. Дождитесь всех checks PR, включая CodeQL, clang-format, actionlint, Windows install smoke test и Linux package job. Просмотрите diff и `build-info.json` Linux-пакетов; Windows-пакеты соберите и проверьте отдельно.
 2. Выполните ручную проверку выше для ZIP и установщика, включая обновление существующей установки. Сохраните результаты и проверьте отсутствие секретов, сертификатов и локальных путей.
 3. С чистого дерева нужного commit соберите публичные файлы выбранного toolchain, сохраните ZIP, setup.exe и SHA256SUMS.txt. CI artifacts — тестовые пакеты, они не публикуются автоматически.
-4. После отдельного решения о выпуске создайте тег версии и GitHub Release с отметкой **pre-release**, описанием проверенных ОС, архитектур и ограничений и приложенными файлами. Сборка и PR сами не создают Release и не выполняют merge.
+4. После отдельного решения о выпуске создайте тег полной версии и GitHub Release
+   с описанием проверенных ОС, архитектур и ограничений и приложенными файлами.
+   Отметка **pre-release** нужна для версий с prerelease-суффиксом (например, `-rc.1`).
+   Сборка и PR сами не создают Release и не выполняют merge.
 
 ## Ручная проверка импорта и сканирования
 
@@ -365,7 +397,9 @@ Windows ZIP и Inno Setup, интерактивные сценарии уста�
 
 Для установки из приложения нужны Windows x64, совпадающая с текущим каталогом
 регистрация Inno Setup в HKCU и установщик текущего toolchain (`mingw`/`msvc`).
-Формат имени: `XLibrary-<major.minor.patch>[-pre-release]-windows-x64-<toolchain>-setup.exe`.
+Формат имени: `XLibrary-<полная SemVer>-windows-x64-<toolchain>-setup.exe`.
+Поддерживаются также прежние имена с числовой версией и необязательным
+постоянным `-pre-release`. Build metadata не влияет на выбор более новой версии.
 У asset должны быть `state=uploaded`, размер до 512 МиБ и `digest=sha256:<64 hex>`
 в API GitHub. Установщик загружается по HTTPS из этого репозитория, переходы
 разрешены только к CDN GitHub, размер и SHA-256 проверяются до запуска.

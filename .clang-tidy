@@ -1,0 +1,6 @@
+# Qt 6.8 передаёт владение callable в invokeMethodImpl; analyzer не видит его освобождение.
+# Сам Qt подавляет этот check у выделения, но warning возникает на соседнем return.
+Checks: '-*,bugprone-integer-division,bugprone-macro-parentheses,bugprone-sizeof-expression,bugprone-suspicious-memset-usage,clang-analyzer-core.*,clang-analyzer-cplusplus.*,-clang-analyzer-cplusplus.NewDeleteLeaks,clang-analyzer-deadcode.DeadStores'
+WarningsAsErrors: '*'
+HeaderFilterRegex: '(^|[/\\])(desktop|src)[/\\]'
+SystemHeaders: false

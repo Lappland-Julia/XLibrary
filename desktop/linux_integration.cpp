@@ -1,3 +1,4 @@
+#include "LaunchArguments.h"
 #include "Linux/LinuxProcessor.h"
 #include "localization.h"
 #ifdef XLIBRARY_HAVE_X11
@@ -227,6 +228,7 @@ bool visible_entry(const desktop_entry &entry) {
     return !entry.values.contains("OnlyShowIn");
 }
 
+// Exec из .desktop имеет собственные правила кавычек и field codes.
 QStringList split_command(const QString &command) {
     QStringList result;
     QString current;
@@ -265,6 +267,17 @@ QStringList split_command(const QString &command) {
             QCoreApplication::translate("XLibrary", "The command has an unclosed double quote.").toStdString());
     if (started)
         result.append(current);
+    return result;
+}
+
+QStringList user_arguments(const QString &arguments) {
+    const auto utf8 = arguments.toUtf8();
+    const auto parsed =
+        xlibrary::split_launch_arguments(std::string_view(utf8.constData(), static_cast<std::size_t>(utf8.size())));
+    QStringList result;
+    result.reserve(static_cast<qsizetype>(parsed.size()));
+    for (const auto &argument : parsed)
+        result.append(QString::fromUtf8(argument.data(), static_cast<qsizetype>(argument.size())));
     return result;
 }
 
@@ -953,14 +966,14 @@ void desktop_platform::launch_application(const app_record &record, launch_mode 
             activate_dbus(entry))
             return;
         command = entry_command(entry);
-        command.append(split_command(record.arguments));
+        command.append(user_arguments(record.arguments));
         if (directory.isEmpty())
             directory = entry.values.value("Path");
         if (entry.flag("Terminal"))
             command = terminal_command(command);
     } else {
         command.append(record.path);
-        command.append(split_command(record.arguments));
+        command.append(user_arguments(record.arguments));
         if (directory.isEmpty())
             directory = QFileInfo(record.path).absolutePath();
     }

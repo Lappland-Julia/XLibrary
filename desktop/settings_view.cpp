@@ -16,6 +16,7 @@
 #include "github_token_store.h"
 #include "localization.h"
 #include "platform_integration.h"
+#include "profile_view.h"
 #include "selection_button.h"
 #include "settings_view.h"
 #include "ui_helpers.h"
@@ -206,6 +207,7 @@ QWidget *library_settings(const ui_context &context, QWidget *) {
 }
 
 QWidget *plugins(const ui_context &context, QWidget *) {
+    auto *service = static_cast<DesktopService *>(context.service);
     auto *widget = page(QCoreApplication::translate("XLibrary", "Interface modules"));
     widget->layout()->addWidget(
         label(QCoreApplication::translate(
@@ -213,15 +215,25 @@ QWidget *plugins(const ui_context &context, QWidget *) {
                   "Native plugins can change interface areas and appearance. Enable only trusted modules; they run "
                   "inside XLibrary. Changes take effect after restart."),
               "muted"));
-    const auto available = context.parameters.value("available_plugins").toStringList();
+    auto available = context.parameters.value("available_plugins").toStringList();
     const auto enabled = context.settings->value("plugins/enabled").toStringList();
+    if (service->safe_mode()) {
+        widget->layout()->addWidget(label(
+            QCoreApplication::translate(
+                "XLibrary", "Safe mode skips native modules. Saved enabled modules are listed below so you can disable "
+                            "a faulty module before restarting."),
+            "muted"));
+        for (const auto &id : enabled)
+            if (!available.contains(id))
+                available.append(id);
+    }
     for (const auto &id : available) {
         auto *control = new QCheckBox(id);
         control->setProperty("plugin_id", id);
         control->setChecked(enabled.contains(id));
         widget->layout()->addWidget(control);
     }
-    if (available.isEmpty())
+    if (available.isEmpty() && !service->safe_mode())
         widget->layout()->addWidget(
             label(QCoreApplication::translate("XLibrary",
                                               "No modules installed. Folder: plugins next to the XLibrary executable."),
@@ -278,6 +290,7 @@ QWidget *about(const ui_context &context, QWidget *) {
 }
 
 QWidget *update_page(const ui_context &context, QWidget *) {
+    auto *service = static_cast<DesktopService *>(context.service);
     auto *widget = page(QCoreApplication::translate("XLibrary", "Update"));
     auto *card = new QFrame;
     card->setProperty("card", true);
@@ -361,7 +374,8 @@ QWidget *update_page(const ui_context &context, QWidget *) {
     };
     QObject::connect(release_button, &QPushButton::clicked, widget, open_release);
     auto refresh_token_controls = [=] {
-        const bool idle = !updates->is_busy() && !tokens->is_busy();
+        const bool idle =
+            !updates->is_busy() && !tokens->is_busy() && !service->profile_busy() && !service->restart_required();
         token->setEnabled(idle);
         save_token->setEnabled(idle && !token->text().isEmpty() && token->hasAcceptableInput());
         remove_token->setEnabled(idle && tokens->has_token());
@@ -371,6 +385,7 @@ QWidget *update_page(const ui_context &context, QWidget *) {
     QObject::connect(token, &QLineEdit::textChanged, widget, refresh_token_controls);
     QObject::connect(tokens, &GithubTokenStore::busy_changed, widget, refresh_token_controls);
     QObject::connect(updates, &UpdateChecker::busy_changed, widget, refresh_token_controls);
+    QObject::connect(service, &DesktopService::profile_state_changed, widget, refresh_token_controls);
     refresh_token_controls();
     QObject::connect(save_token, &QPushButton::clicked, widget, [=] {
         token_status->setText(QCoreApplication::translate("XLibrary", "Saving token…"));
@@ -421,6 +436,12 @@ QWidget *update_page(const ui_context &context, QWidget *) {
     QObject::connect(updates, &UpdateChecker::failed, widget, [=](const QString &message) {
         update_progress->hide();
         update_status->setText(message);
+    });
+    QObject::connect(updates, &UpdateChecker::operation_changed, widget, [=](const operation_result &result) {
+        if (result.state == operation_state::cancelled) {
+            update_progress->hide();
+            update_status->setText(QCoreApplication::translate("XLibrary", "Update cancelled."));
+        }
     });
     QObject::connect(updates, &UpdateChecker::up_to_date, widget, [=](bool releases_exist) {
         update_status->setText(
@@ -520,6 +541,7 @@ QDialog *settings_dialog(const ui_context &context, QWidget *parent) {
         {QCoreApplication::translate("XLibrary", "Appearance settings"), "settings_appearance"},
         {QCoreApplication::translate("XLibrary", "Keyboard shortcuts"), "settings_hotkeys"},
         {QCoreApplication::translate("XLibrary", "Library"), "settings_library"},
+        {QCoreApplication::translate("XLibrary", "Profile"), "settings_profile"},
         {QCoreApplication::translate("XLibrary", "Plugins"), "settings_plugins"},
         {QCoreApplication::translate("XLibrary", "Update"), "settings_update"},
         {QCoreApplication::translate("XLibrary", "About"), "settings_about"}};
@@ -570,14 +592,23 @@ QDialog *settings_dialog(const ui_context &context, QWidget *parent) {
         error->setText(text);
         error->setVisible(!text.isEmpty());
     };
-    QObject::connect(service, &DesktopService::message, error, show_error);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel);
     buttons->button(QDialogButtonBox::Save)->setText(QCoreApplication::translate("XLibrary", "Save"));
     buttons->button(QDialogButtonBox::Save)->setProperty("primary", true);
     buttons->button(QDialogButtonBox::Cancel)->setText(QCoreApplication::translate("XLibrary", "Cancel"));
     root->addWidget(buttons);
+    const auto update_save = [=] {
+        buttons->button(QDialogButtonBox::Save)->setEnabled(!service->profile_busy() && !service->restart_required());
+    };
+    QObject::connect(service, &DesktopService::profile_state_changed, dialog, update_save);
+    update_save();
     QObject::connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
     QObject::connect(buttons, &QDialogButtonBox::accepted, dialog, [=] {
+        if (service->profile_busy() || service->restart_required()) {
+            service->notify(QCoreApplication::translate(
+                "XLibrary", "Settings cannot be saved while a profile operation is running or a restart is required."));
+            return;
+        }
         QVariantMap values;
         QSet<QString> sequences{QKeySequence(Qt::Key_Escape).toString(QKeySequence::PortableText)};
         for (auto *control : dialog->findChildren<QWidget *>()) {
@@ -669,6 +700,7 @@ void register_settings_views(UiRegistry &registry) {
     registry.add_default("settings_appearance", appearance_page);
     registry.add_default("settings_hotkeys", hotkeys);
     registry.add_default("settings_library", library_settings);
+    registry.add_default("settings_profile", profile_view);
     registry.add_default("settings_plugins", plugins);
     registry.add_default("settings_update", update_page);
     registry.add_default("settings_about", about);

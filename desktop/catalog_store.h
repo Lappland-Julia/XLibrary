@@ -12,9 +12,14 @@ private:
     Database database;
     void execute(const char *sql) const;
     void write_metadata(qint64 id, const app_record &record);
+    void write_source(qint64 configuration_id, const app_record &record);
 
 public:
     explicit CatalogStore(const QString &database_path = {});
+    int schema_version() const;
+    void backup_database(const QString &destination) const;
+    QVector<path_relocation> preview_relocation(const QString &old_root, const QString &new_root) const;
+    void apply_relocation(const QVector<path_relocation> &changes);
     static void validate_application(const app_record &record);
     static QString restore_backup(const QString &source, const QString &destination);
     catalog_snapshot read() const;

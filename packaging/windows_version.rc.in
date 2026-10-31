@@ -4,7 +4,7 @@ VS_VERSION_INFO VERSIONINFO
 FILEVERSION @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
 PRODUCTVERSION @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
 FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
-FILEFLAGS VS_FF_PRERELEASE
+FILEFLAGS @XLIBRARY_WINDOWS_FILE_FLAGS@
 FILEOS VOS_NT_WINDOWS32
 FILETYPE VFT_APP
 BEGIN
@@ -14,12 +14,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Lappland-Julia"
             VALUE "FileDescription", "XLibrary application library"
-            VALUE "FileVersion", "@PROJECT_VERSION@"
+            VALUE "FileVersion", "@XLIBRARY_RELEASE_VERSION@"
             VALUE "InternalName", "XLibrary"
             VALUE "LegalCopyright", "Copyright (c) 2026 Lappland-Julia"
             VALUE "OriginalFilename", "XLibrary.exe"
             VALUE "ProductName", "XLibrary"
-            VALUE "ProductVersion", "@PROJECT_VERSION@ pre-release"
+            VALUE "ProductVersion", "@XLIBRARY_RELEASE_VERSION@"
         END
     END
     BLOCK "VarFileInfo"

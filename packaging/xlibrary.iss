@@ -4,6 +4,9 @@
 #ifndef PackageDir
   #error PackageDir must point to the deployed application
 #endif
+#ifndef NumericVersion
+  #error NumericVersion must contain the numeric Windows version
+#endif
 #ifndef OutputDir
   #error OutputDir must point to the release directory
 #endif
@@ -16,7 +19,7 @@
 AppId={{2B7F5CF1-ABF4-4992-899D-B0A17F8DA51E}
 AppName=XLibrary
 AppVersion={#AppVersion}
-AppVerName=XLibrary {#AppVersion} pre-release
+AppVerName=XLibrary {#AppVersion}
 AppPublisher=Lappland-Julia
 AppPublisherURL=https://github.com/Lappland-Julia/XLibrary
 DefaultDirName={localappdata}\Programs\XLibrary
@@ -29,8 +32,11 @@ MinVersion=10.0
 LicenseFile={#PackageDir}\LICENSE
 SetupIconFile=..\assets\xlibrary.ico
 OutputDir={#OutputDir}
-OutputBaseFilename=XLibrary-{#AppVersion}-pre-release-windows-x64-{#Compiler}-setup
-VersionInfoVersion={#AppVersion}.0
+OutputBaseFilename=XLibrary-{#AppVersion}-windows-x64-{#Compiler}-setup
+VersionInfoVersion={#NumericVersion}
+VersionInfoProductVersion={#NumericVersion}
+VersionInfoTextVersion={#AppVersion}
+VersionInfoProductTextVersion={#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern

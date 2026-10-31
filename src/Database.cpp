@@ -2,6 +2,9 @@
 #include <string>
 
 #include "Database.h"
+#include "LaunchIdentity.h"
+#include "ProfileSchema.h"
+#include "SqliteHelpers.h"
 
 void Database::execute(const char *sql) const {
     if (sqlite3_exec(this->connection.get(), sql, nullptr, nullptr, nullptr) != SQLITE_OK) {
@@ -12,30 +15,7 @@ void Database::execute(const char *sql) const {
 
 void Database::initialize() const {
     this->execute("PRAGMA foreign_keys = ON;");
-    this->execute(R"(
-        BEGIN TRANSACTION;
-
-        CREATE TABLE IF NOT EXISTS applications (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            path TEXT
-        );
-
-        CREATE TABLE IF NOT EXISTS tags (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE
-        );
-
-        CREATE TABLE IF NOT EXISTS application_tags (
-            application_id INTEGER NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
-            tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
-            PRIMARY KEY (application_id, tag_id)
-        );
-
-        CREATE INDEX IF NOT EXISTS application_tags_tag_id ON application_tags(tag_id);
-
-        COMMIT;
-    )");
+    xlibrary::migrate_profile(this->connection.get(), this->file_path);
 }
 
 Database::Database() : Database({}, true) {
@@ -60,6 +40,7 @@ Database::Database(const std::filesystem::path &path, bool drop_on_add_error)
         throw std::runtime_error(std::string("Cannot open database: ") + error_message);
     }
 
+    sqlite3_busy_timeout(this->connection.get(), 1500);
     this->initialize();
 }
 
@@ -73,31 +54,29 @@ bool Database::add_application(const Application &application) const {
 }
 
 bool Database::add_application(const std::string &file_title, const std::filesystem::path &file_path) const {
-    if (this->already_exists(file_title) || this->already_exists(file_path)) {
-        if (this->drop_on_add_error) {
-            throw std::invalid_argument(file_title + " app is already exists in database");
+    auto *connection = this->connection.get();
+    xlibrary::sqlite_execute(connection, "SAVEPOINT backend_application;");
+    try {
+        const auto configuration_id = xlibrary::ensure_launch_configuration(connection, file_path);
+        xlibrary::SqliteStatement existing(connection, "SELECT 1 FROM applications WHERE configuration_id=? LIMIT 1;");
+        existing.bind(1, configuration_id);
+        if (existing.next()) {
+            if (this->drop_on_add_error)
+                throw std::invalid_argument("This launch configuration already has a library card");
+            xlibrary::sqlite_execute(connection, "RELEASE backend_application;");
+            return false;
         }
-        return false;
+        xlibrary::SqliteStatement insert(connection, "INSERT INTO applications(name,configuration_id) VALUES(?,?);");
+        insert.bind(1, file_title);
+        insert.bind(2, configuration_id);
+        insert.next();
+        xlibrary::sqlite_execute(connection, "RELEASE backend_application;");
+        return true;
+    } catch (...) {
+        sqlite3_exec(connection, "ROLLBACK TO backend_application; RELEASE backend_application;", nullptr, nullptr,
+                     nullptr);
+        throw;
     }
-
-    sqlite3_stmt *raw_statement = nullptr;
-    const int result = sqlite3_prepare_v2(
-        this->connection.get(), "INSERT INTO applications (name, path) VALUES (?, ?);", -1, &raw_statement, nullptr);
-    const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> statement(raw_statement, &sqlite3_finalize);
-    if (result != SQLITE_OK) {
-        throw std::runtime_error(std::string("Cannot add application: ") + sqlite3_errmsg(this->connection.get()));
-    }
-
-    const auto utf8_path = file_path.u8string();
-    const std::string path_string(utf8_path.begin(), utf8_path.end());
-    if (sqlite3_bind_text64(statement.get(), 1, file_title.data(), file_title.size(), SQLITE_TRANSIENT, SQLITE_UTF8) !=
-            SQLITE_OK ||
-        sqlite3_bind_text64(statement.get(), 2, path_string.data(), path_string.size(), SQLITE_TRANSIENT,
-                            SQLITE_UTF8) != SQLITE_OK ||
-        sqlite3_step(statement.get()) != SQLITE_DONE) {
-        throw std::runtime_error(std::string("Cannot add application: ") + sqlite3_errmsg(this->connection.get()));
-    }
-    return true;
 }
 
 bool Database::already_exists(const std::string &file_title) const {
@@ -119,35 +98,26 @@ bool Database::already_exists(const std::string &file_title) const {
 }
 
 bool Database::already_exists(const std::filesystem::path &file_path) const {
-    sqlite3_stmt *raw_statement = nullptr;
-    const int result = sqlite3_prepare_v2(this->connection.get(), "SELECT 1 FROM applications WHERE path = ? LIMIT 1;",
-                                          -1, &raw_statement, nullptr);
-    const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> statement(raw_statement, &sqlite3_finalize);
-    if (result != SQLITE_OK) {
-        throw std::runtime_error(std::string("Cannot check application: ") + sqlite3_errmsg(this->connection.get()));
+    const auto identity = xlibrary::path_identity(file_path);
+    xlibrary::SqliteStatement statement(
+        this->connection.get(),
+        "SELECT t.identity_key FROM applications a JOIN launch_configuration c ON c.id=a.configuration_id "
+        "JOIN launch_target t ON t.id=c.target_id;");
+    while (statement.next()) {
+        if (statement.text(0) == identity)
+            return true;
     }
-
-    const auto utf8_path = file_path.u8string();
-    const std::string path_string(utf8_path.begin(), utf8_path.end());
-    if (sqlite3_bind_text64(statement.get(), 1, path_string.data(), path_string.size(), SQLITE_TRANSIENT,
-                            SQLITE_UTF8) != SQLITE_OK) {
-        throw std::runtime_error(std::string("Cannot check application: ") + sqlite3_errmsg(this->connection.get()));
-    }
-
-    const int step_result = sqlite3_step(statement.get());
-    if (step_result != SQLITE_ROW && step_result != SQLITE_DONE) {
-        throw std::runtime_error(std::string("Cannot check application: ") + sqlite3_errmsg(this->connection.get()));
-    }
-
-    return step_result == SQLITE_ROW;
+    return false;
 }
 
 std::vector<Application> Database::get_applications() const {
     std::vector<Application> applications{};
 
     sqlite3_stmt *raw_statement = nullptr;
-    int result =
-        sqlite3_prepare_v2(this->connection.get(), "SELECT name, path FROM applications;", -1, &raw_statement, nullptr);
+    int result = sqlite3_prepare_v2(
+        this->connection.get(),
+        "SELECT a.name,c.path FROM applications a JOIN launch_configuration c ON c.id=a.configuration_id;", -1,
+        &raw_statement, nullptr);
 
     const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> statement(raw_statement, &sqlite3_finalize);
 
